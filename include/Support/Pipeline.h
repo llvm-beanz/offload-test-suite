@@ -136,8 +136,14 @@ struct DescriptorSet {
   llvm::SmallVector<Resource> Resources;
 };
 
+struct IOBindings {
+  std::string VertexBuffer;
+  Buffer *VertexBufferPtr;
+};
+
 struct Pipeline {
   int DispatchSize[3];
+  IOBindings Bindings;
   llvm::SmallVector<Buffer> Buffers;
   llvm::SmallVector<DescriptorSet> Sets;
 
@@ -146,6 +152,14 @@ struct Pipeline {
     for (auto &D : Sets)
       DescriptorCount += D.Resources.size();
     return DescriptorCount;
+  }
+
+  Buffer *findBuffer(llvm::StringRef Name) {
+    for (auto &B : Buffers) {
+      if (B.Name == Name)
+        return &B;
+    }
+    return nullptr;
   }
 };
 } // namespace offloadtest
@@ -175,6 +189,10 @@ template <> struct MappingTraits<offloadtest::Resource> {
 
 template <> struct MappingTraits<offloadtest::DirectXBinding> {
   static void mapping(IO &I, offloadtest::DirectXBinding &B);
+};
+
+template <> struct MappingTraits<offloadtest::IOBindings> {
+  static void mapping(IO &I, offloadtest::IOBindings &B);
 };
 
 template <> struct MappingTraits<offloadtest::OutputProperties> {

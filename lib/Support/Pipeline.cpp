@@ -21,17 +21,21 @@ void MappingTraits<offloadtest::Pipeline>::mapping(IO &I,
   I.mapRequired("DispatchSize", MutableDispatchSize);
   I.mapRequired("Buffers", P.Buffers);
   I.mapRequired("DescriptorSets", P.Sets);
+  I.mapOptional("Bindings", P.Bindings, IOBindings());
 
   if (!I.outputting()) {
     for (auto &D : P.Sets) {
       for (auto &R : D.Resources) {
-        for (auto &B : P.Buffers) {
-          if (R.Name == B.Name)
-            R.BufferPtr = &B;
-        }
+        R.BufferPtr = findBuffer(R.Name);
         if (!R.BufferPtr)
           I.setError(Twine("Referenced buffer ") + R.Name + " not found!");
       }
+    }
+    if (!P.Bindings.VertexBuffer.empty()) {
+      P.Bindings.VertexBufferPtr = findBuffer(P.Bindings.VertexBuffer);
+      if (!P.Bindings.VertexBufferPtr)
+        I.setError(Twine("Referenced vertex buffer ") +
+                   P.Bindings.VertexBuffer + " not found!");
     }
   }
 }
@@ -101,6 +105,11 @@ void MappingTraits<offloadtest::DirectXBinding>::mapping(
     IO &I, offloadtest::DirectXBinding &B) {
   I.mapRequired("Register", B.Register);
   I.mapRequired("Space", B.Space);
+}
+
+void MappingTraits<offloadtest::IOBindings>::mapping(
+    IO &I, offloadtest::IOBindings &B) {
+  I.mapOptional("VertexBuffer", B.VertexBuffer);
 }
 
 void MappingTraits<offloadtest::OutputProperties>::mapping(

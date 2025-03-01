@@ -1,0 +1,70 @@
+#--- vertex.hlsl
+struct PSInput {
+  float4 position : SV_POSITION;
+  float2 uv : TEXCOORD;
+};
+PSInput main(float3 position : POSITION, float2 uv : TEXCOORD) {
+  PSInput result;
+  result.position = float4(position, 1.0);
+  result.uv = uv;
+  return result;
+}
+
+#--- pixel.hlsl
+struct PSInput {
+  float4 position : SV_POSITION;
+  float2 uv : TEXCOORD;
+};
+
+Texture2D<float> g_tex : register(t0);
+
+float4 main(PSInput input) : SV_TARGET {
+  int3 offset = int3((input.uv * 64.0) % 4, 0);
+  float val = g_tex.Load(offset);
+  return float4(ddx_fine(val), ddy_fine(val), ddx_coarse(val), ddy_coarse(val));
+}
+#--- pipeline.yaml
+---
+
+Buffers:
+  - Name: VertexData
+    Format: Float32
+    Stride: 20
+    Data: [ -1.0, 1.0, 0.0, 0.0, 0.0,
+            1.0, 1.0, 0.0, 1.0, 0.0,
+            -1.0, -1.0, 0.0, 0.0, 1.0,
+            -1.0, -1.0, 0.0, 0.0, 1.0,
+            1.0, 1.0, 0.0, 1.0, 0.0,
+            1.0, -1.0, 0.0, 1.0, 1.0 ]
+  - Name: Texture
+    Format: Float32
+    Channels: 1
+    Data: [ 0.125, 0.25, 0.5, 1.0,
+            2.0, 4.0, 16.0, 32.0,
+            32.0, 64.0, 128.0, 256.0,
+            256.0, 512.0, 1024.0, 2048.0]
+Bindings:
+  VertexBuffer: VertexData
+DescriptorSets:
+  - Resources:
+    - Name: Texture
+      Kind: Texture2D
+      DirectXBinding:
+        Register: 0
+        Space: 0
+...
+#--- end
+
+# UNSUPPORTED: Clang
+# RUN: split-file %s %t
+# RUN: %if DirectX %{ dxc -T vs_6_0 -Fo %t-vertex.dxil %t/vertex.hlsl %}
+# RUN: %if DirectX %{ dxc -T ps_6_0 -Fo %t-pixel.dxil %t/pixel.hlsl %}
+# RUN: %if DirectX %{ %offloader %t/pipeline.yaml %t-vertex.dxil %t-pixel.dxil | FileCheck %s %}
+# RUN: %if Vulkan %{ dxc -T vs_6_0 -spirv -Fo %t-vertex.spv %t/vertex.hlsl %}
+# RUN: %if Vulkan %{ dxc -T ps_6_0 -spirv -Fo %t-pixel.spv %t/pixel.hlsl %}
+# RUN: %if Vulkan %{ %offloader %t/pipeline.yaml %t-vertex.spv %t-pixel.spv | FileCheck %s %}
+# RUN: %if Metal %{ dxc -T vs_6_0 -Fo %t-vertex.dxil %t/vertex.hlsl %}
+# RUN: %if Metal %{ dxc -T ps_6_0 -Fo %t-pixel.dxil %t/pixel.hlsl %}
+# RUN: %if Metal %{ metal-shaderconverter %t-vertex.dxil -o=%t-vertex.metallib %}
+# RUN: %if Metal %{ metal-shaderconverter %t-pixel.dxil -o=%t-pixel.metallib %}
+# RUN: %if Metal %{ %offloader %t/pipeline.yaml %t-vertex.metallib %t-pixel.metallib | FileCheck %s %}
