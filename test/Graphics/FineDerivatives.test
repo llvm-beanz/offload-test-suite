@@ -25,7 +25,11 @@ float4 main(PSInput input) : SV_TARGET {
 }
 #--- pipeline.yaml
 ---
-
+Shaders:
+  - Stage: Vertex
+    Entry: main
+  - Stage: Pixel
+    Entry: main
 Buffers:
   - Name: VertexData
     Format: Float32

@@ -15,11 +15,18 @@
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/YAMLTraits.h"
 #include <memory>
 #include <string>
 
 namespace offloadtest {
+
+enum class Stages {
+  Compute,
+  Vertex,
+  Pixel
+};
 
 enum class DataFormat {
   Hex8,
@@ -41,6 +48,7 @@ enum class ResourceKind {
   StructuredBuffer,
   RWBuffer,
   RWStructuredBuffer,
+  Texture2D,
   ConstantBuffer,
 };
 
@@ -105,6 +113,7 @@ struct Resource {
     switch (Kind) {
     case ResourceKind::Buffer:
     case ResourceKind::RWBuffer:
+    case ResourceKind::Texture2D:
       return false;
     case ResourceKind::StructuredBuffer:
     case ResourceKind::RWStructuredBuffer:
@@ -122,6 +131,7 @@ struct Resource {
     switch (Kind) {
     case ResourceKind::Buffer:
     case ResourceKind::StructuredBuffer:
+    case ResourceKind::Texture2D:
     case ResourceKind::ConstantBuffer:
       return false;
     case ResourceKind::RWBuffer:
@@ -141,7 +151,15 @@ struct IOBindings {
   Buffer *VertexBufferPtr;
 };
 
+struct Shader {
+  Stages Stage;
+  std::string Entry;
+  std::unique_ptr<llvm::MemoryBuffer> Shader;
+};
+
 struct Pipeline {
+  llvm::SmallVector<Shader> Shaders;
+
   int DispatchSize[3];
   IOBindings Bindings;
   llvm::SmallVector<Buffer> Buffers;
@@ -167,6 +185,7 @@ struct Pipeline {
 LLVM_YAML_IS_SEQUENCE_VECTOR(offloadtest::DescriptorSet)
 LLVM_YAML_IS_SEQUENCE_VECTOR(offloadtest::Resource)
 LLVM_YAML_IS_SEQUENCE_VECTOR(offloadtest::Buffer)
+LLVM_YAML_IS_SEQUENCE_VECTOR(offloadtest::Shader)
 
 namespace llvm {
 namespace yaml {
@@ -199,6 +218,10 @@ template <> struct MappingTraits<offloadtest::OutputProperties> {
   static void mapping(IO &I, offloadtest::OutputProperties &P);
 };
 
+template <> struct MappingTraits<offloadtest::Shader> {
+  static void mapping(IO &I, offloadtest::Shader &B);
+};
+
 template <> struct ScalarEnumerationTraits<offloadtest::DataFormat> {
   static void enumeration(IO &I, offloadtest::DataFormat &V) {
 #define ENUM_CASE(Val) I.enumCase(V, #Val, offloadtest::DataFormat::Val)
@@ -225,7 +248,18 @@ template <> struct ScalarEnumerationTraits<offloadtest::ResourceKind> {
     ENUM_CASE(StructuredBuffer);
     ENUM_CASE(RWBuffer);
     ENUM_CASE(RWStructuredBuffer);
+    ENUM_CASE(Texture2D);
     ENUM_CASE(ConstantBuffer);
+#undef ENUM_CASE
+  }
+};
+
+template <> struct ScalarEnumerationTraits<offloadtest::Stages> {
+  static void enumeration(IO &I, offloadtest::Stages &V) {
+#define ENUM_CASE(Val) I.enumCase(V, #Val, offloadtest::Stages::Val)
+    ENUM_CASE(Compute);
+    ENUM_CASE(Vertex);
+    ENUM_CASE(Pixel);
 #undef ENUM_CASE
   }
 };

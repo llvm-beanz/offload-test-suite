@@ -18,21 +18,24 @@ namespace yaml {
 void MappingTraits<offloadtest::Pipeline>::mapping(IO &I,
                                                    offloadtest::Pipeline &P) {
   MutableArrayRef<int> MutableDispatchSize(P.DispatchSize);
-  I.mapRequired("DispatchSize", MutableDispatchSize);
+  I.mapRequired("Shaders", P.Shaders);
   I.mapRequired("Buffers", P.Buffers);
   I.mapRequired("DescriptorSets", P.Sets);
-  I.mapOptional("Bindings", P.Bindings, IOBindings());
+
+  // Stage-specific data
+  I.mapOptional("DispatchSize", MutableDispatchSize);
+  I.mapOptional("Bindings", P.Bindings);
 
   if (!I.outputting()) {
     for (auto &D : P.Sets) {
       for (auto &R : D.Resources) {
-        R.BufferPtr = findBuffer(R.Name);
+        R.BufferPtr = P.findBuffer(R.Name);
         if (!R.BufferPtr)
           I.setError(Twine("Referenced buffer ") + R.Name + " not found!");
       }
     }
     if (!P.Bindings.VertexBuffer.empty()) {
-      P.Bindings.VertexBufferPtr = findBuffer(P.Bindings.VertexBuffer);
+      P.Bindings.VertexBufferPtr = P.findBuffer(P.Bindings.VertexBuffer);
       if (!P.Bindings.VertexBufferPtr)
         I.setError(Twine("Referenced vertex buffer ") +
                    P.Bindings.VertexBuffer + " not found!");
@@ -117,6 +120,12 @@ void MappingTraits<offloadtest::OutputProperties>::mapping(
   I.mapRequired("Height", P.Height);
   I.mapRequired("Width", P.Width);
   I.mapRequired("Depth", P.Depth);
+}
+
+void MappingTraits<offloadtest::Shader>::mapping(IO &I,
+  offloadtest::Shader &S) {
+    I.mapRequired("Stage", S.Stage);
+    I.mapRequired("Entry", S.Entry);
 }
 } // namespace yaml
 } // namespace llvm
