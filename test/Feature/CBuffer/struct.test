@@ -1,0 +1,117 @@
+#--- source.hlsl
+
+struct A {
+  float2 f1;
+};
+
+struct B : A {
+  uint3 f2;
+};
+
+struct Empty {};
+
+struct C {
+  int i;
+  Empty E;
+  A f3;
+};
+
+cbuffer CBStructs : register(b0) {
+  A a;
+  B b;
+  C c;
+}
+
+struct Arrays {
+  A a;
+  B b;
+  C c;
+};
+
+RWStructuredBuffer<Arrays> Out : register(u0);
+
+[numthreads(1,1,1)]
+void main() {
+  Out[0].a = a;
+  Out[0].b = b;
+  Out[0].c = c;
+}
+
+//--- pipeline.yaml
+
+---
+Shaders:
+  - Stage: Compute
+    Entry: main
+    DispatchSize: [1, 1, 1]
+Buffers:
+  - Name: CBStructs
+    Format: Hex32
+    Data: [
+      # A::f1
+      0x3f800000, 0x40800000, 0x5A5A5A5A, 0x5A5A5A5A,
+      # B::f1
+      0x40800000, 0x3f800000, 0x5A5A5A5A, 0x5A5A5A5A,
+      # B::f2
+      0x12345678, 0x9ABCDEF0, 0x11111111, 0x5A5A5A5A,
+      # C::i
+      0x00000001, 0x5A5A5A5A, 0x5A5A5A5A, 0x5A5A5A5A,
+      # C::f3::f1
+      0x3f800000, 0x40800000, 0x5A5A5A5A, 0x5A5A5A5A
+    ]
+  - Name: Out
+    Format: Hex32
+    Stride: 40
+    ZeroInitSize: 40
+DescriptorSets:
+  - Resources:
+    - Name: CBStructs
+      Kind: ConstantBuffer
+      DirectXBinding:
+        Register: 0
+        Space: 0
+    - Name: Out
+      Kind: RWStructuredBuffer
+      DirectXBinding:
+        Register: 0
+        Space: 0
+...
+#--- end
+
+# RUN: split-file %s %t
+# RUN: %dxc_target -T cs_6_6 -Fo %t.o %t/source.hlsl
+# RUN: %offloader %t/pipeline.yaml %t.o | FileCheck %s
+
+# CHECK: - Name: CBStructs
+# CHECK:   Format: Hex32
+
+# CHECK: - Name: Out
+# CHECK:   Format: Hex32
+# CHECK:   Data: [
+
+# A::f1
+# CHECK:     0x3F800000,
+# CHECK:     0x40800000,
+# CHECK-NOT: 0x5A5A5A5A
+
+# B::f1
+# CHECK:     0x40800000,
+# CHECK:     0x3F800000,
+# CHECK-NOT: 0x5A5A5A5A
+
+# B::f2
+# CHECK:     0x12345678,
+# CHECK:     0x9ABCDEF0,
+# CHECK:     0x11111111,
+# CHECK-NOT: 0x5A5A5A5A
+
+# C::i
+# CHECK:     0x1,
+# CHECK-NOT: 0x5A5A5A5A
+
+# C::f3::f1
+# CHECK:     0x3F800000,
+# CHECK:     0x40800000
+# CHECK-NOT: 0x5A5A5A5A
+
+# CHECK:   ]

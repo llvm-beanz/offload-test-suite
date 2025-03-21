@@ -80,6 +80,10 @@ for device in devices['Devices']:
     config.available_features.add(HLSLCompiler + "-DirectX")
     if "Intel" in device['Description']:
       config.available_features.add("DirectX-Intel")
+    if device['Features'].get('DoublePrecisionFloatShaderOps', False):
+      config.available_features.add("Double")
+    if device['Features'].get('Int64ShaderOps', False):
+      config.available_features.add("Int64")
   if device['API'] == "Metal" and config.offloadtest_enable_metal:
     config.available_features.add("Metal")
     config.available_features.add(HLSLCompiler + "-Metal")
