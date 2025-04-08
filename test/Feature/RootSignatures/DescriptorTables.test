@@ -41,16 +41,22 @@ DescriptorSets:
       DirectXBinding:
         Register: 2
         Space: 0
+      VulkanBinding:
+        Binding: 2
     - Name: Out1
       Kind: RWBuffer
       DirectXBinding:
         Register: 1
         Space: 4
+      VulkanBinding:
+        Binding: 1
     - Name: Out2
       Kind: RWBuffer
       DirectXBinding:
         Register: 2
         Space: 4
+      VulkanBinding:
+        Binding: 2
 ...
 #--- end
 
