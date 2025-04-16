@@ -466,7 +466,11 @@ public:
       std::vector<VkDescriptorSetLayoutBinding> Bindings;
       for (const auto &R : S.Resources) {
         VkDescriptorSetLayoutBinding Binding = {};
-        Binding.binding = R.VKBinding.Binding;
+        if (!R.VKBinding.has_value())
+          return llvm::createStringError(std::errc::invalid_argument,
+                                         "No VulkanBinding provided for '%s'",
+                                         R.Name.c_str());
+        Binding.binding = R.VKBinding->Binding;
         Binding.descriptorType = getDescriptorType(R.Kind);
         Binding.descriptorCount = 1;
         Binding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;

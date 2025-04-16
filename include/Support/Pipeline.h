@@ -109,7 +109,7 @@ struct Resource {
   ResourceKind Kind;
   std::string Name;
   DirectXBinding DXBinding;
-  VulkanBinding VKBinding;
+  std::optional<VulkanBinding> VKBinding;
   Buffer *BufferPtr = nullptr;
 
   bool isRaw() const {

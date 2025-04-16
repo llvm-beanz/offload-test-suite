@@ -79,15 +79,11 @@ DescriptorSets:
       DirectXBinding:
         Register: 4294967294
         Space: 0
-      VulkanBinding:
-        Binding: 4294967294
     - Name: Out1
       Kind: RWStructuredBuffer
       DirectXBinding:
         Register: 1
         Space: 4294967279
-      VulkanBinding:
-        Binding: 1
 ...
 #--- end
 
