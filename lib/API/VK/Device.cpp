@@ -44,6 +44,8 @@ static VkDescriptorType getDescriptorType(const ResourceKind RK) {
   switch (RK) {
   case ResourceKind::Buffer:
   case ResourceKind::RWBuffer:
+  case ResourceKind::Texture2D:
+  case ResourceKind::RWTexture2D:
     return VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
   case ResourceKind::ByteAddressBuffer:
   case ResourceKind::RWByteAddressBuffer:
