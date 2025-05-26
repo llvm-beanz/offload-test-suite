@@ -2,11 +2,13 @@
 
 Texture2D<float4> In : register(t0);
 RWTexture2D<float4> Out : register(u0);
+RWBuffer<float4> Out2 : register(u1);
 
 [numthreads(2,2,1)]
 void main(uint3 GID : SV_GroupThreadID) {
   float4 Color = In[GID.xy];
   Out[GID.xy] = Color.bgra;
+  Out2[GID.x + (2 * GID.y)] = Color.bgra;
 }
 //--- pipeline.yaml
 ---
@@ -34,6 +36,10 @@ Buffers:
       Height: 2
       Width: 2
       Depth: 16
+  - Name: OutBuf
+    Format: Float32
+    Channels: 4
+    ZeroInitSize: 64
 DescriptorSets:
   - Resources:
     - Name: In
@@ -50,15 +56,44 @@ DescriptorSets:
         Space: 0
       VulkanBinding:
         Binding: 1
+    - Name: OutBuf
+      Kind: RWBuffer
+      DirectXBinding:
+        Register: 1
+        Space: 0
+      VulkanBinding:
+        Binding: 2
 ...
 #--- end
 
-# UNSUPPORTED: Clang-Vulkan
+# UNSUPPORTED: Clang
 # RUN: split-file %s %t
 # RUN: %dxc_target -T cs_6_0 -Fo %t.o %t/source.hlsl
 # RUN: %offloader %t/pipeline.yaml %t.o | FileCheck %s
 
 # CHECK: Name: Out
+# CHECK: Data: [
+# CHECK: 0,
+# CHECK: 0,
+# CHECK: 1,
+# CHECK: 1,
+
+# CHECK: 0,
+# CHECK: 1,
+# CHECK: 0,
+# CHECK: 1,
+
+# CHECK: 1,
+# CHECK: 0,
+# CHECK: 0,
+# CHECK: 1,
+
+# CHECK: 0,
+# CHECK: 1,
+# CHECK: 1,
+# CHECK: 1
+
+# CHECK: Name: OutBuf
 # CHECK: Data: [
 # CHECK: 0,
 # CHECK: 0,
