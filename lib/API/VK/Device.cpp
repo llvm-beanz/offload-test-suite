@@ -46,7 +46,8 @@ static VkDescriptorType getDescriptorType(const ResourceKind RK) {
   case ResourceKind::Buffer:
   case ResourceKind::RWBuffer:
     return VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
-  case ResourceKind::Texture2D:  // TODO: Texture2D should be sampled image.
+  case ResourceKind::Texture2D:
+    return VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
   case ResourceKind::RWTexture2D:
     return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
   case ResourceKind::ByteAddressBuffer:
@@ -128,6 +129,7 @@ private:
 
   struct ImageRef {
     VkImage Image;
+    VkSampler Sampler;
     VkDeviceMemory Memory;
   };
 
@@ -464,6 +466,28 @@ public:
       return llvm::createStringError(std::errc::io_error,
                                      "Failed to create image.");
 
+    VkSampler Sampler = 0;
+    if (!R.isReadWrite()) {
+      VkSamplerCreateInfo SamplerCI = {};
+      SamplerCI.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+      SamplerCI.magFilter = VK_FILTER_LINEAR;
+      SamplerCI.minFilter = VK_FILTER_LINEAR;
+      SamplerCI.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+      SamplerCI.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+      SamplerCI.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+      SamplerCI.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+      SamplerCI.mipLodBias = 0.0f;
+      SamplerCI.compareOp = VK_COMPARE_OP_NEVER;
+      SamplerCI.minLod = 0.0f;
+      SamplerCI.maxLod = 0.0f;
+      SamplerCI.maxAnisotropy = 1.0;
+      SamplerCI.anisotropyEnable = VK_FALSE;
+      SamplerCI.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+      if (vkCreateSampler(IS.Device, &SamplerCI, nullptr, &Sampler))
+        return llvm::createStringError(std::errc::device_or_resource_busy,
+                                       "Failed to create sampler.");
+    }
+
     VkMemoryRequirements MemReqs;
     vkGetImageMemoryRequirements(IS.Device, Image, &MemReqs);
     VkMemoryAllocateInfo AllocInfo = {};
@@ -478,8 +502,8 @@ public:
       return llvm::createStringError(std::errc::not_enough_memory,
                                      "Image memory binding failed.");
 
-    return ResourceRef(getDescriptorType(R.Kind), Host, ImageRef{Image, Memory},
-                       R.BufferPtr);
+    return ResourceRef(getDescriptorType(R.Kind), Host,
+                       ImageRef{Image, Sampler, Memory}, R.BufferPtr);
   }
 
   llvm::Error createBuffer(Resource &R, InvocationState &IS,
@@ -667,6 +691,12 @@ public:
     llvm::SmallVector<VkDescriptorBufferInfo> RawBufferInfos;
     llvm::SmallVector<VkDescriptorImageInfo> ImageInfos;
 
+    // This massively over-reserves the descriptor info structs, but prevents
+    // dumb things from happening if these get reallocated...
+    const uint32_t DescriptorCount = P.getDescriptorCount();
+    RawBufferInfos.reserve(DescriptorCount);
+    ImageInfos.reserve(DescriptorCount);
+
     uint32_t BufIdx = 0;
     for (uint32_t SetIdx = 0; SetIdx < P.Sets.size(); ++SetIdx) {
       for (uint32_t RIdx = 0; RIdx < P.Sets[SetIdx].Resources.size();
@@ -694,7 +724,8 @@ public:
                                 &IS.ImageViews.back()))
             return llvm::createStringError(std::errc::device_or_resource_busy,
                                            "Failed to create image view.");
-          VkDescriptorImageInfo ImageInfo = {0, IS.ImageViews.back(),
+          VkDescriptorImageInfo ImageInfo = {IS.Buffers[BufIdx].Image.Sampler,
+                                             IS.ImageViews.back(),
                                              VK_IMAGE_LAYOUT_GENERAL};
           ImageInfos.push_back(ImageInfo);
         } else {
