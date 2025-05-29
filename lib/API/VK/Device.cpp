@@ -467,7 +467,7 @@ public:
                                      "Failed to create image.");
 
     VkSampler Sampler = 0;
-    if (!R.isReadWrite()) {
+    /*if (!R.isReadWrite()) {
       VkSamplerCreateInfo SamplerCI = {};
       SamplerCI.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
       SamplerCI.magFilter = VK_FILTER_LINEAR;
@@ -486,7 +486,7 @@ public:
       if (vkCreateSampler(IS.Device, &SamplerCI, nullptr, &Sampler))
         return llvm::createStringError(std::errc::device_or_resource_busy,
                                        "Failed to create sampler.");
-    }
+    }*/
 
     VkMemoryRequirements MemReqs;
     vkGetImageMemoryRequirements(IS.Device, Image, &MemReqs);
@@ -502,12 +502,45 @@ public:
       return llvm::createStringError(std::errc::not_enough_memory,
                                      "Image memory binding failed.");
 
+    /*VkBufferImageCopy BufferCopyRegion = {};
+    BufferCopyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    BufferCopyRegion.imageSubresource.mipLevel = 0;
+    BufferCopyRegion.imageSubresource.baseArrayLayer = 0;
+    BufferCopyRegion.imageSubresource.layerCount = 1;
+    BufferCopyRegion.imageExtent.width = B.OutputProps.Width;
+    BufferCopyRegion.imageExtent.height = B.OutputProps.Height;
+    BufferCopyRegion.imageExtent.depth = 1;
+    BufferCopyRegion.bufferOffset = 0;
+
+    VkImageSubresourceRange SubRange = {};
+    SubRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    SubRange.baseMipLevel = 0;
+    SubRange.levelCount = 1;
+    SubRange.layerCount = 1;
+
+    VkImageMemoryBarrier ImageBarrier = {};
+    ImageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+
+    ImageBarrier.image = Image;
+    ImageBarrier.subresourceRange = SubRange;
+    ImageBarrier.srcAccessMask = 0;
+    ImageBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    ImageBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    ImageBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+
+    vkCmdPipelineBarrier(IS.CmdBuffer, VK_PIPELINE_STAGE_HOST_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0,
+                         nullptr, 1, &ImageBarrier);
+
+    vkCmdCopyBufferToImage(IS.CmdBuffer, Host.Buffer, Image,
+                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
+                           &BufferCopyRegion);*/
+
     return ResourceRef(getDescriptorType(R.Kind), Host,
                        ImageRef{Image, Sampler, Memory}, R.BufferPtr);
   }
 
-  llvm::Error createBuffer(Resource &R, InvocationState &IS,
-                           const uint32_t HeapIdx) {
+  llvm::Error createBuffer(Resource &R, InvocationState &IS) {
     auto ExHostBuf = createBuffer(
         IS, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, R.size(), R.BufferPtr->Data.get());
@@ -724,23 +757,24 @@ public:
                                 &IS.ImageViews.back()))
             return llvm::createStringError(std::errc::device_or_resource_busy,
                                            "Failed to create image view.");
-          VkDescriptorImageInfo ImageInfo = {IS.Buffers[BufIdx].Image.Sampler,
-                                             IS.ImageViews.back(),
-                                             VK_IMAGE_LAYOUT_GENERAL};
+          const VkDescriptorImageInfo ImageInfo = {
+              IS.Buffers[BufIdx].Image.Sampler, IS.ImageViews.back(),
+              VK_IMAGE_LAYOUT_GENERAL};
           ImageInfos.push_back(ImageInfo);
         } else {
           VkBufferViewCreateInfo ViewCreateInfo = {};
-          bool IsRawOrUniform = R.isRaw();
-          VkFormat Format = IsRawOrUniform ? VK_FORMAT_UNDEFINED
-                                           : getVKFormat(R.BufferPtr->Format,
-                                                         R.BufferPtr->Channels);
+          const bool IsRawOrUniform = R.isRaw();
+          const VkFormat Format =
+              IsRawOrUniform
+                  ? VK_FORMAT_UNDEFINED
+                  : getVKFormat(R.BufferPtr->Format, R.BufferPtr->Channels);
           ViewCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO;
           ViewCreateInfo.buffer = IS.Buffers[BufIdx].Device.Buffer;
           ViewCreateInfo.format = Format;
           ViewCreateInfo.range = VK_WHOLE_SIZE;
           if (IsRawOrUniform) {
-            VkDescriptorBufferInfo BI = {IS.Buffers[BufIdx].Device.Buffer, 0,
-                                         VK_WHOLE_SIZE};
+            const VkDescriptorBufferInfo BI = {IS.Buffers[BufIdx].Device.Buffer,
+                                               0, VK_WHOLE_SIZE};
             RawBufferInfos.push_back(BI);
           } else {
             IS.BufferViews.push_back(VkBufferView{0});
@@ -854,7 +888,7 @@ public:
       ImageBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
 
       vkCmdPipelineBarrier(IS.CmdBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr,
                            0, nullptr, 1, &ImageBarrier);
       return;
     }
