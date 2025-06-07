@@ -1,0 +1,58 @@
+#--- simple.hlsl
+
+RWBuffer<int> X : register(u0, space0);
+RWBuffer<int> Y : register(u1, space0);
+
+void SomeFn(RWBuffer<int> Arr[2], uint Idx, int Val0) {
+  Arr[0] = Y;
+  Arr[0][Idx] = Val0;
+}
+
+[numthreads(1,1,1)]
+void main(uint GI : SV_GroupIndex) {
+  RWBuffer<int> Arr[2] = {X, Y};
+  SomeFn(Arr, GI, 1);
+  Arr[0][GI] = 2;
+}
+//--- simple.yaml
+---
+Shaders:
+  - Stage: Compute
+    Entry: main
+    DispatchSize: [1, 1, 1]
+Buffers:
+  - Name: X
+    Format: Int32
+    ZeroInitSize: 4
+  - Name: Y
+    Format: Int32
+    ZeroInitSize: 4
+DescriptorSets:
+  - Resources:
+    - Name: X
+      Kind: RWBuffer
+      DirectXBinding:
+        Register: 0
+        Space: 0
+      VulkanBinding:
+        Binding: 0
+    - Name: Y
+      Kind: RWBuffer
+      DirectXBinding:
+        Register: 1
+        Space: 0
+      VulkanBinding:
+        Binding: 1
+...
+#--- end
+
+# UNSUPPORTED: Clang
+
+# RUN: split-file %s %t
+# RUN: %dxc_target -T cs_6_0 -Fo %t.o %t/simple.hlsl
+# RUN: %offloader %t/simple.yaml %t.o | FileCheck %s
+
+# CHECK: Name: X
+# CHECK: Data: [ 2
+# CHECK: Name: Y
+# CHECK: Data: [ 1
