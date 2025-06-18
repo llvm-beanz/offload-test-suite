@@ -14,6 +14,7 @@
 #include "llvm/Support/Error.h"
 
 #include <memory>
+#include <numeric>
 #include <system_error>
 #include <vulkan/vulkan.h>
 
@@ -467,26 +468,6 @@ public:
                                      "Failed to create image.");
 
     VkSampler Sampler = 0;
-    /*if (!R.isReadWrite()) {
-      VkSamplerCreateInfo SamplerCI = {};
-      SamplerCI.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-      SamplerCI.magFilter = VK_FILTER_LINEAR;
-      SamplerCI.minFilter = VK_FILTER_LINEAR;
-      SamplerCI.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-      SamplerCI.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-      SamplerCI.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-      SamplerCI.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-      SamplerCI.mipLodBias = 0.0f;
-      SamplerCI.compareOp = VK_COMPARE_OP_NEVER;
-      SamplerCI.minLod = 0.0f;
-      SamplerCI.maxLod = 0.0f;
-      SamplerCI.maxAnisotropy = 1.0;
-      SamplerCI.anisotropyEnable = VK_FALSE;
-      SamplerCI.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
-      if (vkCreateSampler(IS.Device, &SamplerCI, nullptr, &Sampler))
-        return llvm::createStringError(std::errc::device_or_resource_busy,
-                                       "Failed to create sampler.");
-    }*/
 
     VkMemoryRequirements MemReqs;
     vkGetImageMemoryRequirements(IS.Device, Image, &MemReqs);
@@ -501,40 +482,6 @@ public:
     if (vkBindImageMemory(IS.Device, Image, Memory, 0))
       return llvm::createStringError(std::errc::not_enough_memory,
                                      "Image memory binding failed.");
-
-    /*VkBufferImageCopy BufferCopyRegion = {};
-    BufferCopyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    BufferCopyRegion.imageSubresource.mipLevel = 0;
-    BufferCopyRegion.imageSubresource.baseArrayLayer = 0;
-    BufferCopyRegion.imageSubresource.layerCount = 1;
-    BufferCopyRegion.imageExtent.width = B.OutputProps.Width;
-    BufferCopyRegion.imageExtent.height = B.OutputProps.Height;
-    BufferCopyRegion.imageExtent.depth = 1;
-    BufferCopyRegion.bufferOffset = 0;
-
-    VkImageSubresourceRange SubRange = {};
-    SubRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    SubRange.baseMipLevel = 0;
-    SubRange.levelCount = 1;
-    SubRange.layerCount = 1;
-
-    VkImageMemoryBarrier ImageBarrier = {};
-    ImageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-
-    ImageBarrier.image = Image;
-    ImageBarrier.subresourceRange = SubRange;
-    ImageBarrier.srcAccessMask = 0;
-    ImageBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    ImageBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    ImageBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-
-    vkCmdPipelineBarrier(IS.CmdBuffer, VK_PIPELINE_STAGE_HOST_BIT,
-                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0,
-                         nullptr, 1, &ImageBarrier);
-
-    vkCmdCopyBufferToImage(IS.CmdBuffer, Host.Buffer, Image,
-                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
-                           &BufferCopyRegion);*/
 
     return ResourceRef(getDescriptorType(R.Kind), Host,
                        ImageRef{Image, Sampler, Memory}, R.BufferPtr);
@@ -617,42 +564,38 @@ public:
   }
 
   llvm::Error createDescriptorPool(Pipeline &P, InvocationState &IS) {
-    uint32_t TexelBufferCount = 0;
-    uint32_t StorageBufferCount = 0;
-    uint32_t UniformBufferCount = 0;
+
+    constexpr VkDescriptorType DescriptorTypes[] = {
+        VK_DESCRIPTOR_TYPE_SAMPLER,
+        VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+        VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+        VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER,
+        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
+    constexpr size_t DescriptorTypesSize =
+        sizeof(DescriptorTypes) / sizeof(VkDescriptorType);
+    uint32_t DescriptorCounts[DescriptorTypesSize] = {0};
     for (const auto &S : P.Sets) {
       for (const auto &R : S.Resources) {
-        if (isUniform(R.Kind))
-          UniformBufferCount += 1;
-        else if (R.isRaw())
-          StorageBufferCount += 1;
-        else
-          TexelBufferCount += 1;
+        DescriptorCounts[getDescriptorType(R.Kind)]++;
       }
     }
-    assert(TexelBufferCount + StorageBufferCount + UniformBufferCount ==
-               P.getDescriptorCount() &&
+    assert(std::accumulate(&DescriptorCounts[0],
+                           &DescriptorCounts[DescriptorTypesSize],
+                           0) == P.getDescriptorCount() &&
            "Mismatch in descriptor type identification.");
     llvm::SmallVector<VkDescriptorPoolSize> PoolSizes;
-    if (TexelBufferCount > 0) {
-      VkDescriptorPoolSize PoolSize = {};
-      PoolSize.type = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
-      PoolSize.descriptorCount = TexelBufferCount;
-      PoolSizes.push_back(PoolSize);
-    }
-
-    if (StorageBufferCount > 0) {
-      VkDescriptorPoolSize PoolSize = {};
-      PoolSize.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-      PoolSize.descriptorCount = StorageBufferCount;
-      PoolSizes.push_back(PoolSize);
-    }
-
-    if (UniformBufferCount > 0) {
-      VkDescriptorPoolSize PoolSize = {};
-      PoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-      PoolSize.descriptorCount = UniformBufferCount;
-      PoolSizes.push_back(PoolSize);
+    for (const VkDescriptorType Type : DescriptorTypes) {
+      if (DescriptorCounts[Type] > 0) {
+        llvm::outs() << "Descriptors: { type = " << Type
+                     << ", count = " << DescriptorCounts[Type] << " }\n";
+        VkDescriptorPoolSize PoolSize = {};
+        PoolSize.type = Type;
+        PoolSize.descriptorCount = DescriptorCounts[Type];
+        PoolSizes.push_back(PoolSize);
+      }
     }
 
     VkDescriptorPoolCreateInfo PoolCreateInfo = {};

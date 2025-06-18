@@ -1,7 +1,7 @@
 #--- source.hlsl
 
 Texture2D<float4> In : register(t0);
-RWTexture2D<float4> Out : register(u0);
+RWTexture2D<float4> Out : register(u1);
 
 [numthreads(4,1,1)]
 void main(uint GI : SV_GroupIndex) {
@@ -35,6 +35,22 @@ Buffers:
       Height: 2
       Width: 2
       Depth: 16
+  - Name: ExpectedOut
+    Format: Float32
+    Channels: 4
+    Data: [0.0, 0.0, 1.0, 1.0,
+           0.0, 1.0, 0.0, 1.0,
+           1.0, 0.0, 0.0, 1.0,
+           0.0, 1.0, 1.0, 1.0]
+    OutputProps:
+      Height: 2
+      Width: 2
+      Depth: 16
+Results:
+  - Result: Test1
+    Rule: BufferExact
+    Actual: Out
+    Expected: ExpectedOut
 DescriptorSets:
   - Resources:
     - Name: In
@@ -47,7 +63,7 @@ DescriptorSets:
     - Name: Out
       Kind: RWTexture2D
       DirectXBinding:
-        Register: 0
+        Register: 1
         Space: 0
       VulkanBinding:
         Binding: 1
@@ -57,26 +73,4 @@ DescriptorSets:
 # UNSUPPORTED: Clang
 # RUN: split-file %s %t
 # RUN: %dxc_target -T cs_6_0 -Fo %t.o %t/source.hlsl
-# RUN: %offloader %t/pipeline.yaml %t.o | FileCheck %s
-
-# CHECK: Name: Out
-# CHECK: Data: [
-# CHECK: 0,
-# CHECK: 0,
-# CHECK: 1,
-# CHECK: 1,
-
-# CHECK: 0,
-# CHECK: 1,
-# CHECK: 0,
-# CHECK: 1,
-
-# CHECK: 1,
-# CHECK: 0,
-# CHECK: 0,
-# CHECK: 1,
-
-# CHECK: 0,
-# CHECK: 1,
-# CHECK: 1,
-# CHECK: 1
+# RUN: %offloader %t/pipeline.yaml %t.o
