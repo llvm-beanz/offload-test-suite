@@ -210,6 +210,8 @@ struct Resource {
     }
     llvm_unreachable("All cases handled");
   }
+
+  bool isReadOnly() const { return !isReadWrite(); }
 };
 
 struct DescriptorSet {
