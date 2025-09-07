@@ -153,22 +153,6 @@ int run() {
       return 1;
     }
 
-    if (Quiet)
-      return 0;
-
-    std::error_code EC;
-    llvm::sys::fs::OpenFlags OpenFlags = llvm::sys::fs::OF_None;
-    if (ImageOutput.empty()) {
-      OpenFlags |= llvm::sys::fs::OF_Text;
-      auto Out =
-          std::make_unique<llvm::ToolOutputFile>(OutputFilename, EC, OpenFlags);
-      ExitOnErr(llvm::errorCodeToError(EC));
-
-      yaml::Output YOut(Out->os());
-      YOut << PipelineDesc;
-      Out->keep();
-      return 0;
-    }
     for (const auto &B : PipelineDesc.Buffers) {
       if (B.Name == ImageOutput) {
         if (B.ArraySize != 1)
@@ -181,6 +165,23 @@ int run() {
         ExitOnErr(Image::writePNG(Img, OutputFilename));
         return 0;
       }
+    }
+
+    if (Quiet)
+      return 0;
+
+    llvm::sys::fs::OpenFlags OpenFlags = llvm::sys::fs::OF_None;
+    if (ImageOutput.empty()) {
+      std::error_code EC;
+      OpenFlags |= llvm::sys::fs::OF_Text;
+      auto Out =
+          std::make_unique<llvm::ToolOutputFile>(OutputFilename, EC, OpenFlags);
+      ExitOnErr(llvm::errorCodeToError(EC));
+
+      yaml::Output YOut(Out->os());
+      YOut << PipelineDesc;
+      Out->keep();
+      return 0;
     }
 
     ExitOnErr(

@@ -25,8 +25,9 @@ static llvm::Error toError(NS::Error *Err) {
       std::error_code(static_cast<int>(Err->code()), std::system_category());
   llvm::SmallString<256> ErrMsg;
   llvm::raw_svector_ostream OS(ErrMsg);
-  OS << Err->localizedDescription()->utf8String() << ": ";
-  OS << Err->localizedFailureReason()->utf8String();
+  OS << Err->localizedDescription()->utf8String();
+  if (Err->localizedFailureReason())
+    OS << ": " << Err->localizedFailureReason()->utf8String();
   return llvm::createStringError(EC, ErrMsg);
 }
 
@@ -50,6 +51,26 @@ static MTL::PixelFormat getMTLFormat(DataFormat Format, int Channels) {
   return MTL::PixelFormatInvalid;
 }
 
+#define MTLVTXFormats(Base)                                                    \
+  if (Channels == 1)                                                           \
+    return MTL::VertexFormat##Base;                                            \
+  if (Channels == 2)                                                           \
+    return MTL::VertexFormat##Base##2;                                         \
+  if (Channels == 3)                                                           \
+    return MTL::VertexFormat##Base##3;                                         \
+  if (Channels == 4)                                                           \
+    return MTL::VertexFormat##Base##4;
+
+static MTL::VertexFormat getMTLVertexFormat(DataFormat Format, int Channels) {
+  switch (Format) {
+  case DataFormat::Float32:
+    MTLVTXFormats(Float) break;
+  default:
+    llvm_unreachable("Unsupported Resource format specified");
+  }
+  return MTL::VertexFormatInvalid;
+}
+
 namespace {
 class MTLDevice : public offloadtest::Device {
   Capabilities Caps;
@@ -62,12 +83,10 @@ class MTLDevice : public offloadtest::Device {
         T->release();
       for (MTL::Buffer *B : Buffers)
         B->release();
-      if (Fn)
-        Fn->release();
-      if (Lib)
-        Lib->release();
-      if (PipelineState)
-        PipelineState->release();
+      if (ComputePipeline)
+        ComputePipeline->release();
+      if (RenderPipeline)
+        RenderPipeline->release();
       if (Queue)
         Queue->release();
 
@@ -76,30 +95,103 @@ class MTLDevice : public offloadtest::Device {
 
     NS::AutoreleasePool *Pool = nullptr;
     MTL::CommandQueue *Queue = nullptr;
-    MTL::Library *Lib = nullptr;
-    MTL::Function *Fn = nullptr;
-    MTL::ComputePipelineState *PipelineState;
+    MTL::ComputePipelineState *ComputePipeline = nullptr;
+    MTL::RenderPipelineState *RenderPipeline = nullptr;
     MTL::Buffer *ArgBuffer;
+    MTL::Buffer *VertexBuffer;
+    MTL::VertexDescriptor *VertexDescriptor;
     llvm::SmallVector<MTL::Texture *> Textures;
     llvm::SmallVector<MTL::Buffer *> Buffers;
   };
 
-  llvm::Error loadShaders(InvocationState &IS, const Shader &P) {
-    NS::Error *Error = nullptr;
-    const llvm::StringRef Program = P.Shader->getBuffer();
-    dispatch_data_t Data = dispatch_data_create(Program.data(), Program.size(),
-                                                dispatch_get_main_queue(),
-                                                ^{
-                                                });
-    IS.Lib = Device->newLibrary(Data, &Error);
-    if (Error)
-      return toError(Error);
+  llvm::Error setupVertexShader(InvocationState &IS, const Pipeline &P) {
+    if (P.Bindings.VertexBufferPtr) {
+      IS.VertexBuffer = Device->newBuffer(
+          P.Bindings.VertexBufferPtr->Data.back().get(),
+          P.Bindings.VertexBufferPtr->size(), MTL::ResourceStorageModeManaged);
 
-    IS.Fn = IS.Lib->newFunction(
-        NS::String::string(P.Entry.c_str(), NS::UTF8StringEncoding));
-    IS.PipelineState = Device->newComputePipelineState(IS.Fn, &Error);
-    if (Error)
-      return toError(Error);
+      IS.VertexDescriptor = MTL::VertexDescriptor::alloc()->init();
+      const uint32_t Stride = P.Bindings.getVertexStride();
+      for (size_t I = 0; I < P.Bindings.VertexAttributes.size(); ++I) {
+        const VertexAttribute &VA = P.Bindings.VertexAttributes[I];
+        MTL::VertexAttributeDescriptor *VADesc =
+            MTL::VertexAttributeDescriptor::alloc()->init();
+        VADesc->setBufferIndex(0);
+        VADesc->setOffset(VA.Offset);
+        VADesc->setFormat(getMTLVertexFormat(VA.Format, VA.Channels));
+        IS.VertexDescriptor->attributes()->setObject(VADesc, I);
+      }
+
+      MTL::VertexBufferLayoutDescriptor *LDesc =
+          MTL::VertexBufferLayoutDescriptor::alloc()->init();
+      LDesc->setStride(Stride);
+      LDesc->setStepRate(1);
+      LDesc->setStepFunction(MTL::VertexStepFunctionPerVertex);
+      IS.VertexDescriptor->layouts()->setObject(LDesc, 0);
+    }
+    return llvm::Error::success();
+  }
+
+  llvm::Error loadShaders(InvocationState &IS, const Pipeline &P) {
+    NS::Error *Error = nullptr;
+    if (P.Shaders.size() == 1 && P.Shaders[0].Stage == Stages::Compute) {
+      const llvm::StringRef Program = P.Shaders[0].Shader->getBuffer();
+      dispatch_data_t Data = dispatch_data_create(
+          Program.data(), Program.size(), dispatch_get_main_queue(),
+          ^{
+          });
+      MTL::Library *Lib = Device->newLibrary(Data, &Error);
+      if (Error)
+        return toError(Error);
+      IS.Pool->addObject(Lib);
+
+      MTL::Function *Fn = Lib->newFunction(NS::String::string(
+          P.Shaders[0].Entry.c_str(), NS::UTF8StringEncoding));
+      IS.ComputePipeline = Device->newComputePipelineState(Fn, &Error);
+      if (Error)
+        return toError(Error);
+      IS.Pool->addObject(Fn);
+    } else {
+      MTL::RenderPipelineDescriptor *Desc =
+          MTL::RenderPipelineDescriptor::alloc()->init();
+      IS.Pool->addObject(Desc);
+      for (const auto &S : P.Shaders) {
+        const llvm::StringRef Program = S.Shader->getBuffer();
+        dispatch_data_t Data = dispatch_data_create(
+            Program.data(), Program.size(), dispatch_get_main_queue(),
+            ^{
+            });
+        MTL::Library *Lib = Device->newLibrary(Data, &Error);
+        if (Error)
+          return toError(Error);
+        IS.Pool->addObject(Lib);
+
+        MTL::Function *Fn = Lib->newFunction(
+            NS::String::string(S.Entry.c_str(), NS::UTF8StringEncoding));
+        switch (S.Stage) {
+        case Stages::Vertex:
+          Desc->setVertexFunction(Fn);
+          if (llvm::Error Err = setupVertexShader(IS, P))
+            return Err;
+          Desc->setVertexDescriptor(IS.VertexDescriptor);
+          break;
+        case Stages::Pixel:
+          Desc->setFragmentFunction(Fn);
+          break;
+        case Stages::Compute:
+          return llvm::createStringError(
+              std::errc::not_supported,
+              "Metal: Compute shader invalid with render pipeline!");
+        }
+        if (Error)
+          return toError(Error);
+        IS.Pool->addObject(Fn);
+      }
+
+      IS.RenderPipeline = Device->newRenderPipelineState(Desc, &Error);
+      if (Error)
+        return toError(Error);
+    }
 
     return llvm::Error::success();
   }
@@ -184,28 +276,66 @@ class MTLDevice : public offloadtest::Device {
   llvm::Error executeCommands(Pipeline &P, InvocationState &IS) {
     MTL::CommandBuffer *CmdBuffer = IS.Queue->commandBuffer();
 
-    MTL::ComputeCommandEncoder *CmdEncoder = CmdBuffer->computeCommandEncoder();
+    if (IS.ComputePipeline) {
+      MTL::ComputeCommandEncoder *CmdEncoder =
+          CmdBuffer->computeCommandEncoder();
 
-    CmdEncoder->setComputePipelineState(IS.PipelineState);
-    CmdEncoder->setBuffer(IS.ArgBuffer, 0, 2);
-    for (uint64_t I = 0; I < IS.Textures.size(); ++I)
-      CmdEncoder->useResource(IS.Textures[I],
-                              MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
-    for (uint64_t I = 0; I < IS.Buffers.size(); ++I)
-      CmdEncoder->useResource(IS.Buffers[I],
-                              MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+      CmdEncoder->setComputePipelineState(IS.ComputePipeline);
+      CmdEncoder->setBuffer(IS.ArgBuffer, 0, 2);
+      for (uint64_t I = 0; I < IS.Textures.size(); ++I)
+        CmdEncoder->useResource(IS.Textures[I], MTL::ResourceUsageRead |
+                                                    MTL::ResourceUsageWrite);
+      for (uint64_t I = 0; I < IS.Buffers.size(); ++I)
+        CmdEncoder->useResource(IS.Buffers[I], MTL::ResourceUsageRead |
+                                                   MTL::ResourceUsageWrite);
 
-    const NS::UInteger TGS = IS.PipelineState->maxTotalThreadsPerThreadgroup();
-    const llvm::ArrayRef<int> DispatchSize =
-        llvm::ArrayRef<int>(P.Shaders[0].DispatchSize);
-    const MTL::Size GridSize =
-        MTL::Size(TGS * DispatchSize[0], DispatchSize[1], DispatchSize[2]);
-    const MTL::Size GroupSize(TGS, 1, 1);
+      const NS::UInteger TGS =
+          IS.ComputePipeline->maxTotalThreadsPerThreadgroup();
+      const llvm::ArrayRef<int> DispatchSize =
+          llvm::ArrayRef<int>(P.Shaders[0].DispatchSize);
+      const MTL::Size GridSize =
+          MTL::Size(TGS * DispatchSize[0], DispatchSize[1], DispatchSize[2]);
+      const MTL::Size GroupSize(TGS, 1, 1);
+      CmdEncoder->dispatchThreads(GridSize, GroupSize);
+      CmdEncoder->memoryBarrier(MTL::BarrierScopeBuffers);
 
-    CmdEncoder->dispatchThreads(GridSize, GroupSize);
-    CmdEncoder->memoryBarrier(MTL::BarrierScopeBuffers);
+      CmdEncoder->endEncoding();
+    } else {
+      assert(IS.RenderPipeline && "If not compute... render!");
+      MTL::RenderPassDescriptor *Desc =
+          MTL::RenderPassDescriptor::alloc()->init();
 
-    CmdEncoder->endEncoding();
+      // Setup the render target texture.
+      Buffer *RTarget = P.Bindings.RTargetBufferPtr;
+
+      const MTL::PixelFormat Format =
+          getMTLFormat(RTarget->Format, RTarget->Channels);
+
+      const uint64_t Width = RTarget->OutputProps.Width;
+      const uint64_t Height = RTarget->OutputProps.Height;
+      MTL::TextureDescriptor *TDesc =
+          MTL::TextureDescriptor::texture2DDescriptor(Format, Width, Height,
+                                                      false);
+
+      MTL::Texture *NewTex = Device->newTexture(TDesc);
+      auto *CADesc = MTL::RenderPassColorAttachmentDescriptor::alloc()->init();
+      CADesc->setTexture(NewTex);
+      CADesc->setLoadAction(MTL::LoadActionClear);
+      CADesc->setClearColor(MTL::ClearColor());
+      CADesc->setStoreAction(MTL::StoreActionStore);
+      Desc->colorAttachments()->setObject(CADesc, 0);
+
+      MTL::RenderCommandEncoder *CmdEncoder =
+          CmdBuffer->renderCommandEncoder(Desc);
+      CmdEncoder->setVertexBuffer(IS.VertexBuffer, 0, 0);
+      CmdEncoder->setVertexBytes(RTarget->Data[0].get(), RTarget->size(), 0);
+      CmdEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0),
+                                 P.Bindings.getVertexCount());
+
+      // CmdEncoder->memoryBarrier(MTL::BarrierScopeBuffers,
+      // MTL::RenderStageFragment, 0);
+      CmdEncoder->endEncoding();
+    }
 
     CmdBuffer->commit();
     CmdBuffer->waitUntilCompleted();
@@ -260,10 +390,11 @@ public:
   llvm::Error executeProgram(Pipeline &P) override {
     InvocationState IS;
     IS.Queue = Device->newCommandQueue();
-    if (auto Err = loadShaders(IS, P.Shaders[0]))
-      return Err;
 
     if (auto Err = createBuffers(P, IS))
+      return Err;
+
+    if (auto Err = loadShaders(IS, P))
       return Err;
 
     if (auto Err = executeCommands(P, IS))

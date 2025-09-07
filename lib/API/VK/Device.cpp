@@ -98,6 +98,17 @@ static VkImageViewType getImageViewType(const ResourceKind RK) {
   }
 }
 
+static VkShaderStageFlagBits getShaderStageFlag(Stages Stage) {
+  switch (Stage) {
+  case Stages::Compute:
+    return VK_SHADER_STAGE_COMPUTE_BIT;
+  case Stages::Vertex:
+    return VK_SHADER_STAGE_VERTEX_BIT;
+  case Stages::Pixel:
+    return VK_SHADER_STAGE_FRAGMENT_BIT;
+  }
+}
+
 static std::string getMessageSeverityString(
     VkDebugUtilsMessageSeverityFlagBitsEXT MessageSeverity) {
   if (MessageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
@@ -227,6 +238,12 @@ private:
     llvm::SmallVector<ResourceRef> ResourceRefs;
   };
 
+  struct CompiledShader {
+    Stages Stage;
+    std::string Entry;
+    VkShaderModule Shader;
+  };
+
   struct InvocationState {
     VkDevice Device;
     VkQueue Queue;
@@ -235,14 +252,30 @@ private:
     VkPipelineLayout PipelineLayout;
     VkDescriptorPool Pool;
     VkPipelineCache PipelineCache;
-    VkShaderModule Shader;
     VkPipeline Pipeline;
 
+    // FrameBuffer associated data for offscreen rendering.
+    VkFramebuffer FrameBuffer;
+    ResourceBundle FrameBufferResource = {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 0,
+                                          nullptr};
+
+    VkRenderPass RenderPass;
+    uint32_t ShaderStageMask = 0;
+
+    llvm::SmallVector<CompiledShader> Shaders;
     llvm::SmallVector<VkDescriptorSetLayout> DescriptorSetLayouts;
     llvm::SmallVector<ResourceBundle> Resources;
     llvm::SmallVector<VkDescriptorSet> DescriptorSets;
     llvm::SmallVector<VkBufferView> BufferViews;
     llvm::SmallVector<VkImageView> ImageViews;
+
+    uint32_t getFullShaderStageMask() {
+      if (0 != ShaderStageMask)
+        return ShaderStageMask;
+      for (const auto &S : Shaders)
+        ShaderStageMask |= getShaderStageFlag(S.Stage);
+      return ShaderStageMask;
+    }
   };
 
 public:
@@ -633,6 +666,22 @@ public:
           return Err;
       }
     }
+
+    Resource FrameBuffer = {ResourceKind::Texture2D,     "RenderTarget", {}, {},
+                            P.Bindings.RTargetBufferPtr, false};
+    IS.FrameBufferResource.Size = P.Bindings.RTargetBufferPtr->size();
+    IS.FrameBufferResource.BufferPtr = P.Bindings.RTargetBufferPtr;
+    auto ExHostBuf = createBuffer(
+        IS, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, FrameBuffer.size(),
+        FrameBuffer.BufferPtr->Data[0].get());
+    if (!ExHostBuf)
+      return ExHostBuf.takeError();
+    auto ExImageRef = createImage(IS, FrameBuffer, *ExHostBuf);
+    if (!ExImageRef)
+      return ExImageRef.takeError();
+    IS.FrameBufferResource.ResourceRefs.push_back(*ExImageRef);
+
     return llvm::Error::success();
   }
 
@@ -721,7 +770,7 @@ public:
         Binding.binding = R.VKBinding->Binding;
         Binding.descriptorType = getDescriptorType(R.Kind);
         Binding.descriptorCount = R.BufferPtr->ArraySize;
-        Binding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        Binding.stageFlags = IS.getFullShaderStageMask();
         Bindings.push_back(Binding);
       }
       VkDescriptorSetLayoutCreateInfo LayoutCreateInfo = {};
@@ -880,14 +929,105 @@ public:
     return llvm::Error::success();
   }
 
-  llvm::Error createShaderModule(llvm::StringRef Program, InvocationState &IS) {
-    VkShaderModuleCreateInfo ShaderCreateInfo = {};
-    ShaderCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    ShaderCreateInfo.codeSize = Program.size();
-    ShaderCreateInfo.pCode = reinterpret_cast<const uint32_t *>(Program.data());
-    if (vkCreateShaderModule(IS.Device, &ShaderCreateInfo, nullptr, &IS.Shader))
-      return llvm::createStringError(std::errc::not_supported,
-                                     "Failed to create shader module.");
+  llvm::Error createShaderModules(Pipeline &P, InvocationState &IS) {
+    for (const auto &Shader : P.Shaders) {
+      const llvm::StringRef Program = Shader.Shader->getBuffer();
+      VkShaderModuleCreateInfo ShaderCreateInfo = {};
+      ShaderCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+      ShaderCreateInfo.codeSize = Program.size();
+      ShaderCreateInfo.pCode =
+          reinterpret_cast<const uint32_t *>(Program.data());
+      CompiledShader CS = {Shader.Stage, Shader.Entry, 0};
+      if (vkCreateShaderModule(IS.Device, &ShaderCreateInfo, nullptr,
+                               &CS.Shader))
+        return llvm::createStringError(std::errc::not_supported,
+                                       "Failed to create shader module.");
+      IS.Shaders.emplace_back(CS);
+    }
+    return llvm::Error::success();
+  }
+
+  llvm::Error createRenderPass(Pipeline &P, InvocationState &IS) {
+    std::array<VkAttachmentDescription, 2> attachments = {};
+
+    attachments[0].format =
+        getVKFormat(P.Bindings.RTargetBufferPtr->Format,
+                    P.Bindings.RTargetBufferPtr->Channels);
+    attachments[0].samples = VK_SAMPLE_COUNT_1_BIT;
+    attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachments[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachments[0].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    attachments[1].format = VK_FORMAT_D32_SFLOAT_S8_UINT;
+    attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
+    attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachments[1].finalLayout =
+        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentReference colorReference = {};
+    colorReference.attachment = 0;
+    colorReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentReference depthReference = {};
+    depthReference.attachment = 1;
+    depthReference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    VkSubpassDescription subpassDescription = {};
+    subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpassDescription.colorAttachmentCount = 1;
+    subpassDescription.pColorAttachments = &colorReference;
+    subpassDescription.pDepthStencilAttachment = &depthReference;
+    subpassDescription.inputAttachmentCount = 0;
+    subpassDescription.pInputAttachments = nullptr;
+    subpassDescription.preserveAttachmentCount = 0;
+    subpassDescription.pPreserveAttachments = nullptr;
+    subpassDescription.pResolveAttachments = nullptr;
+
+    std::array<VkSubpassDependency, 2> dependencies = {};
+
+    dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependencies[0].dstSubpass = 0;
+    dependencies[0].srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    dependencies[0].dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    dependencies[0].srcAccessMask =
+        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    dependencies[0].dstAccessMask =
+        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
+        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+    dependencies[0].dependencyFlags = 0;
+
+    dependencies[1].srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependencies[1].dstSubpass = 0;
+    dependencies[1].srcStageMask =
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependencies[1].dstStageMask =
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependencies[1].srcAccessMask = 0;
+    dependencies[1].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+                                    VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+    dependencies[1].dependencyFlags = 0;
+
+    VkRenderPassCreateInfo RPCI = {};
+    RPCI.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    RPCI.attachmentCount = static_cast<uint32_t>(attachments.size());
+    RPCI.pAttachments = attachments.data();
+    RPCI.subpassCount = 1;
+    RPCI.pSubpasses = &subpassDescription;
+    RPCI.dependencyCount = static_cast<uint32_t>(dependencies.size());
+    RPCI.pDependencies = dependencies.data();
+
+    if (vkCreateRenderPass(IS.Device, &RPCI, nullptr, &IS.RenderPass))
+      return llvm::createStringError(std::errc::device_or_resource_busy,
+                                     "Failed to create render pass.");
     return llvm::Error::success();
   }
 
@@ -899,20 +1039,136 @@ public:
       return llvm::createStringError(std::errc::device_or_resource_busy,
                                      "Failed to create pipeline cache.");
 
-    VkPipelineShaderStageCreateInfo StageInfo = {};
-    StageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    StageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-    StageInfo.module = IS.Shader;
-    StageInfo.pName = P.Shaders[0].Entry.c_str();
+    if (IS.Shaders[0].Stage == Stages::Compute) {
+      const CompiledShader &S = IS.Shaders[0];
+      assert(IS.Shaders.size() == 1 &&
+             "Currently only support one compute shader");
+      VkPipelineShaderStageCreateInfo StageInfo = {};
+      StageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+      StageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+      StageInfo.module = S.Shader;
+      StageInfo.pName = S.Entry.c_str();
 
-    VkComputePipelineCreateInfo PipelineCreateInfo = {};
-    PipelineCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-    PipelineCreateInfo.stage = StageInfo;
-    PipelineCreateInfo.layout = IS.PipelineLayout;
-    if (vkCreateComputePipelines(IS.Device, IS.PipelineCache, 1,
-                                 &PipelineCreateInfo, nullptr, &IS.Pipeline))
+      VkComputePipelineCreateInfo PipelineCreateInfo = {};
+      PipelineCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+      PipelineCreateInfo.stage = StageInfo;
+      PipelineCreateInfo.layout = IS.PipelineLayout;
+      if (vkCreateComputePipelines(IS.Device, IS.PipelineCache, 1,
+                                   &PipelineCreateInfo, nullptr, &IS.Pipeline))
+        return llvm::createStringError(std::errc::device_or_resource_busy,
+                                       "Failed to create pipeline.");
+      return llvm::Error::success();
+    }
+
+    llvm::SmallVector<VkPipelineShaderStageCreateInfo> Stages;
+    for (const auto &S : IS.Shaders) {
+      VkPipelineShaderStageCreateInfo StageInfo = {};
+      StageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+      StageInfo.stage = getShaderStageFlag(S.Stage);
+      StageInfo.module = S.Shader;
+      StageInfo.pName = S.Entry.c_str();
+      Stages.emplace_back(StageInfo);
+    }
+
+    VkPipelineInputAssemblyStateCreateInfo InputAssemblyCI = {};
+    InputAssemblyCI.sType =
+        VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    InputAssemblyCI.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+    VkPipelineRasterizationStateCreateInfo RastStateCI = {};
+    RastStateCI.sType =
+        VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    RastStateCI.polygonMode = VK_POLYGON_MODE_FILL;
+    RastStateCI.cullMode = VK_CULL_MODE_NONE;
+    RastStateCI.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    RastStateCI.depthClampEnable = VK_FALSE;
+    RastStateCI.rasterizerDiscardEnable = VK_FALSE;
+    RastStateCI.depthBiasEnable = VK_FALSE;
+    RastStateCI.lineWidth = 1.0f;
+
+    VkPipelineColorBlendAttachmentState BlendState = {};
+    BlendState.colorWriteMask = 0xf;
+    BlendState.blendEnable = VK_FALSE;
+    VkPipelineColorBlendStateCreateInfo BlendStateCI = {};
+    BlendStateCI.sType =
+        VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    BlendStateCI.attachmentCount = 1;
+    BlendStateCI.pAttachments = &BlendState;
+
+    VkPipelineViewportStateCreateInfo ViewStateCI = {};
+    ViewStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    ViewStateCI.viewportCount = 1;
+    ViewStateCI.scissorCount = 1;
+
+    const VkDynamicState DynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT,
+                                            VK_DYNAMIC_STATE_SCISSOR};
+    VkPipelineDynamicStateCreateInfo DynamicStateCI = {};
+    DynamicStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    DynamicStateCI.pDynamicStates = &DynamicStates[0];
+    DynamicStateCI.dynamicStateCount = 2;
+
+    VkPipelineDepthStencilStateCreateInfo DepthStencilStateCI = {};
+    DepthStencilStateCI.sType =
+        VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    DepthStencilStateCI.depthTestEnable = VK_TRUE;
+    DepthStencilStateCI.depthWriteEnable = VK_TRUE;
+    DepthStencilStateCI.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+    DepthStencilStateCI.depthBoundsTestEnable = VK_FALSE;
+    DepthStencilStateCI.back.failOp = VK_STENCIL_OP_KEEP;
+    DepthStencilStateCI.back.passOp = VK_STENCIL_OP_KEEP;
+    DepthStencilStateCI.back.compareOp = VK_COMPARE_OP_ALWAYS;
+    DepthStencilStateCI.stencilTestEnable = VK_FALSE;
+    DepthStencilStateCI.front = DepthStencilStateCI.back;
+
+    VkPipelineMultisampleStateCreateInfo MultisampleStateCI = {};
+    MultisampleStateCI.sType =
+        VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    MultisampleStateCI.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+    assert(P.Bindings.VertexBufferPtr && "No vertex buffer for vertex shader");
+    const uint32_t Stride = P.Bindings.getVertexStride();
+
+    VkVertexInputBindingDescription VertexInputBinding{};
+    VertexInputBinding.binding = 0;
+    VertexInputBinding.stride = Stride;
+    VertexInputBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+    llvm::SmallVector<VkVertexInputAttributeDescription> Attributes;
+    for (size_t I = 0; I < P.Bindings.VertexAttributes.size(); ++I) {
+      const VertexAttribute &VA = P.Bindings.VertexAttributes[I];
+      VkVertexInputAttributeDescription VkVA = {};
+      VkVA.location = I;
+      VkVA.binding = 0;
+      VkVA.format = getVKFormat(VA.Format, VA.Channels);
+      VkVA.offset = VA.Offset;
+      Attributes.push_back(VkVA);
+    }
+
+    VkPipelineVertexInputStateCreateInfo VertexInputStateCi = {};
+    VertexInputStateCi.sType =
+        VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    VertexInputStateCi.vertexBindingDescriptionCount = 1;
+    VertexInputStateCi.pVertexBindingDescriptions = &VertexInputBinding;
+    VertexInputStateCi.vertexAttributeDescriptionCount = Attributes.size();
+    VertexInputStateCi.pVertexAttributeDescriptions = Attributes.data();
+
+    VkGraphicsPipelineCreateInfo PipelineCreateInfo = {};
+    PipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    PipelineCreateInfo.stageCount = Stages.size();
+    PipelineCreateInfo.pStages = Stages.data();
+    PipelineCreateInfo.pVertexInputState = &VertexInputStateCi;
+    PipelineCreateInfo.pInputAssemblyState = &InputAssemblyCI;
+    PipelineCreateInfo.pRasterizationState = &RastStateCI;
+    PipelineCreateInfo.pColorBlendState = &BlendStateCI;
+    PipelineCreateInfo.pMultisampleState = &MultisampleStateCI;
+    PipelineCreateInfo.pViewportState = &ViewStateCI;
+    PipelineCreateInfo.pDepthStencilState = &DepthStencilStateCI;
+    PipelineCreateInfo.pDynamicState = &DynamicStateCI;
+
+    if (vkCreateGraphicsPipelines(IS.Device, IS.PipelineCache, 1,
+                                  &PipelineCreateInfo, nullptr, &IS.Pipeline))
       return llvm::createStringError(std::errc::device_or_resource_busy,
-                                     "Failed to create pipeline.");
+                                     "Failed to create graphics pipeline.");
 
     return llvm::Error::success();
   }
@@ -1074,22 +1330,64 @@ public:
     }
   }
 
-  llvm::Error createComputeCommands(Pipeline &P, InvocationState &IS) {
+  llvm::Error createCommands(Pipeline &P, InvocationState &IS) {
     for (auto &R : IS.Resources)
       copyResourceDataToDevice(IS, R);
 
-    vkCmdBindPipeline(IS.CmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
-                      IS.Pipeline);
-    vkCmdBindDescriptorSets(IS.CmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
-                            IS.PipelineLayout, 0, IS.DescriptorSets.size(),
-                            IS.DescriptorSets.data(), 0, 0);
-    const llvm::ArrayRef<int> DispatchSize =
-        llvm::ArrayRef<int>(P.Shaders[0].DispatchSize);
-    vkCmdDispatch(IS.CmdBuffer, DispatchSize[0], DispatchSize[1],
-                  DispatchSize[2]);
+    if (IS.Shaders[0].Stage != Stages::Compute) {
+      VkClearValue ClearValues[2] = {};
+      ClearValues[0].color = {{0.0f, 0.0f, 0.0f, 0.0f}};
+      ClearValues[1].depthStencil = {1.0f, 0};
+
+      VkRenderPassBeginInfo RenderPassBeginInfo = {};
+      RenderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+      RenderPassBeginInfo.renderPass = IS.RenderPass;
+      RenderPassBeginInfo.framebuffer = IS.FrameBuffer;
+      RenderPassBeginInfo.renderArea.extent.width =
+          P.Bindings.RTargetBufferPtr->OutputProps.Width;
+      RenderPassBeginInfo.renderArea.extent.height =
+          P.Bindings.RTargetBufferPtr->OutputProps.Height;
+      RenderPassBeginInfo.clearValueCount = 2;
+      RenderPassBeginInfo.pClearValues = ClearValues;
+
+      vkCmdBeginRenderPass(IS.CmdBuffer, &RenderPassBeginInfo,
+                           VK_SUBPASS_CONTENTS_INLINE);
+
+      VkViewport Viewport = {};
+      Viewport.width = P.Bindings.RTargetBufferPtr->OutputProps.Width;
+      Viewport.height = P.Bindings.RTargetBufferPtr->OutputProps.Height;
+      Viewport.maxDepth = 1.0f;
+      Viewport.minDepth = 0.0f;
+      vkCmdSetViewport(IS.CmdBuffer, 0, 1, &Viewport);
+
+      VkRect2D Scissor = {};
+      Scissor.extent.width = P.Bindings.RTargetBufferPtr->OutputProps.Width;
+      Scissor.extent.height = P.Bindings.RTargetBufferPtr->OutputProps.Height;
+      vkCmdSetScissor(IS.CmdBuffer, 0, 1, &Scissor);
+    }
+
+    const VkPipelineBindPoint BindPoint = IS.Shaders[0].Stage != Stages::Compute
+                                              ? VK_PIPELINE_BIND_POINT_GRAPHICS
+                                              : VK_PIPELINE_BIND_POINT_COMPUTE;
+    vkCmdBindPipeline(IS.CmdBuffer, BindPoint, IS.Pipeline);
+    vkCmdBindDescriptorSets(IS.CmdBuffer, BindPoint, IS.PipelineLayout, 0,
+                            IS.DescriptorSets.size(), IS.DescriptorSets.data(),
+                            0, 0);
+
+    if (IS.Shaders[0].Stage != Stages::Compute) {
+      const llvm::ArrayRef<int> DispatchSize =
+          llvm::ArrayRef<int>(P.Shaders[0].DispatchSize);
+      vkCmdDispatch(IS.CmdBuffer, DispatchSize[0], DispatchSize[1],
+                    DispatchSize[2]);
+    } else {
+      vkCmdDraw(IS.CmdBuffer, P.Bindings.getVertexCount(), 0, 0, 0);
+      vkCmdEndRenderPass(IS.CmdBuffer);
+      copyResourceDataToDevice(IS, IS.FrameBufferResource);
+    }
 
     for (auto &R : IS.Resources)
       copyResourceDataToHost(IS, R);
+
     return llvm::Error::success();
   }
 
@@ -1148,7 +1446,8 @@ public:
 
     vkDestroyPipeline(IS.Device, IS.Pipeline, nullptr);
 
-    vkDestroyShaderModule(IS.Device, IS.Shader, nullptr);
+    for (auto &S : IS.Shaders)
+      vkDestroyShaderModule(IS.Device, S.Shader, nullptr);
 
     vkDestroyPipelineCache(IS.Device, IS.PipelineCache, nullptr);
 
@@ -1169,6 +1468,14 @@ public:
     if (auto Err = createDevice(State))
       return Err;
     llvm::outs() << "Physical device created.\n";
+    if (auto Err = createShaderModules(P, State))
+      return Err;
+    llvm::outs() << "Shader module created.\n";
+    if (P.Shaders[0].Stage != Stages::Compute) {
+      if (auto Err = createRenderPass(P, State))
+        return Err;
+      llvm::outs() << "Render pass created.\n";
+    }
     if (auto Err = createCommandBuffer(State))
       return Err;
     llvm::outs() << "Copy command buffer created.\n";
@@ -1187,15 +1494,15 @@ public:
     if (auto Err = createDescriptorSets(P, State))
       return Err;
     llvm::outs() << "Descriptor sets created.\n";
-    if (auto Err = createShaderModule(P.Shaders[0].Shader->getBuffer(), State))
+    if (auto Err = createShaderModules(P, State))
       return Err;
     llvm::outs() << "Shader module created.\n";
     if (auto Err = createPipeline(P, State))
       return Err;
     llvm::outs() << "Compute pipeline created.\n";
-    if (auto Err = createComputeCommands(P, State))
+    if (auto Err = createCommands(P, State))
       return Err;
-    llvm::outs() << "Compute commands created.\n";
+    llvm::outs() << "Commands created.\n";
     if (auto Err = executeCommandBuffer(State, VK_PIPELINE_STAGE_TRANSFER_BIT))
       return Err;
     llvm::outs() << "Executed compute command buffer.\n";
