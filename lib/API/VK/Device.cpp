@@ -175,6 +175,26 @@ static VkDebugUtilsMessengerEXT registerDebugUtilCallback(VkInstance Instance) {
   return DebugMessenger;
 }
 
+static llvm::Expected<uint32_t>
+getMemoryIndex(VkPhysicalDevice Device, uint32_t MemoryTypeBits,
+               VkMemoryPropertyFlags MemoryFlags) {
+  VkPhysicalDeviceMemoryProperties MemProperties;
+  vkGetPhysicalDeviceMemoryProperties(Device, &MemProperties);
+  uint32_t MemIdx = 0;
+  for (; MemIdx < MemProperties.memoryTypeCount;
+       ++MemIdx, MemoryTypeBits >>= 1) {
+    if ((MemoryTypeBits & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) &&
+        ((MemProperties.memoryTypes[MemIdx].propertyFlags & MemoryFlags) ==
+         MemoryFlags)) {
+      break;
+    }
+  }
+  if (MemIdx >= MemProperties.memoryTypeCount)
+    return llvm::createStringError(std::errc::not_enough_memory,
+                                   "Could not identify appropriate memory.");
+  return MemIdx;
+}
+
 namespace {
 
 class VKDevice : public offloadtest::Device {
@@ -258,6 +278,7 @@ private:
     VkFramebuffer FrameBuffer;
     ResourceBundle FrameBufferResource = {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 0,
                                           nullptr};
+    ImageRef DepthStencil = {0, 0, 0};
 
     VkRenderPass RenderPass;
     uint32_t ShaderStageMask = 0;
@@ -535,22 +556,12 @@ public:
     AllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     AllocInfo.allocationSize = MemReqs.size;
 
-    VkPhysicalDeviceMemoryProperties MemProperties;
-    vkGetPhysicalDeviceMemoryProperties(Device, &MemProperties);
-    uint32_t MemIdx = 0;
-    for (; MemIdx < MemProperties.memoryTypeCount;
-         ++MemIdx, MemReqs.memoryTypeBits >>= 1) {
-      if ((MemReqs.memoryTypeBits & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) &&
-          ((MemProperties.memoryTypes[MemIdx].propertyFlags & MemoryFlags) ==
-           MemoryFlags)) {
-        break;
-      }
-    }
-    if (MemIdx >= MemProperties.memoryTypeCount)
-      return llvm::createStringError(std::errc::not_enough_memory,
-                                     "Could not identify appropriate memory.");
+    llvm::Expected<uint32_t> MemIdx =
+        getMemoryIndex(Device, MemReqs.memoryTypeBits, MemoryFlags);
+    if (!MemIdx)
+      return MemIdx.takeError();
 
-    AllocInfo.memoryTypeIndex = MemIdx;
+    AllocInfo.memoryTypeIndex = *MemIdx;
 
     if (vkAllocateMemory(IS.Device, &AllocInfo, nullptr, &Memory))
       return llvm::createStringError(std::errc::not_enough_memory,
@@ -580,7 +591,7 @@ public:
   }
 
   llvm::Expected<ResourceRef> createImage(InvocationState &IS, Resource &R,
-                                          BufferRef &Host) {
+                                          BufferRef &Host, int UsageOverride = 0) {
     const offloadtest::Buffer &B = *R.BufferPtr;
     VkImageCreateInfo ImageCreateInfo = {};
     ImageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -595,11 +606,15 @@ public:
     ImageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     ImageCreateInfo.extent = {static_cast<uint32_t>(B.OutputProps.Width),
                               static_cast<uint32_t>(B.OutputProps.Height), 1};
+    if (UsageOverride == 0) {
     ImageCreateInfo.usage =
         VK_IMAGE_USAGE_TRANSFER_DST_BIT |
         (R.isReadWrite()
              ? (VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
              : VK_IMAGE_USAGE_SAMPLED_BIT);
+    } else {
+      ImageCreateInfo.usage = UsageOverride;
+    }
 
     VkImage Image;
     if (vkCreateImage(IS.Device, &ImageCreateInfo, nullptr, &Image))
@@ -659,6 +674,50 @@ public:
     return llvm::Error::success();
   }
 
+  llvm::Error createDepthStencil(Pipeline &P, InvocationState &IS) {
+    // Create an optimal image used as the depth stencil attachment
+    VkImageCreateInfo ImageCi = {};
+    ImageCi.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    ImageCi.imageType = VK_IMAGE_TYPE_2D;
+    ImageCi.format = VK_FORMAT_D32_SFLOAT_S8_UINT;
+    // Use example's height and width
+    ImageCi.extent = {
+        static_cast<uint32_t>(P.Bindings.RTargetBufferPtr->OutputProps.Width),
+        static_cast<uint32_t>(P.Bindings.RTargetBufferPtr->OutputProps.Height),
+        1};
+    ImageCi.mipLevels = 1;
+    ImageCi.arrayLayers = 1;
+    ImageCi.samples = VK_SAMPLE_COUNT_1_BIT;
+    ImageCi.tiling = VK_IMAGE_TILING_OPTIMAL;
+    ImageCi.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    ImageCi.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    if (vkCreateImage(IS.Device, &ImageCi, nullptr, &IS.DepthStencil.Image))
+      return llvm::createStringError(std::errc::device_or_resource_busy,
+                                     "Depth stencil creation failed.");
+
+    // Allocate memory for the image (device local) and bind it to our image
+    VkMemoryAllocateInfo MemAlloc{};
+    MemAlloc.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    VkMemoryRequirements MemReqs;
+    vkGetImageMemoryRequirements(IS.Device, IS.DepthStencil.Image, &MemReqs);
+    MemAlloc.allocationSize = MemReqs.size;
+    llvm::Expected<uint32_t> MemIdx = getMemoryIndex(
+        Device, MemReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    if (!MemIdx)
+      return MemIdx.takeError();
+
+    MemAlloc.memoryTypeIndex = *MemIdx;
+    if (vkAllocateMemory(IS.Device, &MemAlloc, nullptr,
+                         &IS.DepthStencil.Memory))
+      return llvm::createStringError(std::errc::not_enough_memory,
+                                     "Depth stencil memory allocation failed.");
+    if (vkBindImageMemory(IS.Device, IS.DepthStencil.Image,
+                          IS.DepthStencil.Memory, 0))
+      return llvm::createStringError(std::errc::not_enough_memory,
+                                     "Depth stencil memory binding failed.");
+    return llvm::Error::success();
+  }
+
   llvm::Error createBuffers(Pipeline &P, InvocationState &IS) {
     for (auto &D : P.Sets) {
       for (auto &R : D.Resources) {
@@ -667,20 +726,26 @@ public:
       }
     }
 
-    Resource FrameBuffer = {ResourceKind::Texture2D,     "RenderTarget", {}, {},
-                            P.Bindings.RTargetBufferPtr, false};
-    IS.FrameBufferResource.Size = P.Bindings.RTargetBufferPtr->size();
-    IS.FrameBufferResource.BufferPtr = P.Bindings.RTargetBufferPtr;
-    auto ExHostBuf = createBuffer(
-        IS, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, FrameBuffer.size(),
-        FrameBuffer.BufferPtr->Data[0].get());
-    if (!ExHostBuf)
-      return ExHostBuf.takeError();
-    auto ExImageRef = createImage(IS, FrameBuffer, *ExHostBuf);
-    if (!ExImageRef)
-      return ExImageRef.takeError();
-    IS.FrameBufferResource.ResourceRefs.push_back(*ExImageRef);
+    if (IS.Shaders[0].Stage != Stages::Compute) {
+      Resource FrameBuffer = {
+          ResourceKind::Texture2D,     "RenderTarget", {}, {},
+          P.Bindings.RTargetBufferPtr, false};
+      IS.FrameBufferResource.Size = P.Bindings.RTargetBufferPtr->size();
+      IS.FrameBufferResource.BufferPtr = P.Bindings.RTargetBufferPtr;
+      auto ExHostBuf = createBuffer(
+          IS,
+          VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, FrameBuffer.size(),
+          FrameBuffer.BufferPtr->Data[0].get());
+      if (!ExHostBuf)
+        return ExHostBuf.takeError();
+      auto ExImageRef = createImage(IS, FrameBuffer, *ExHostBuf, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+      if (!ExImageRef)
+        return ExImageRef.takeError();
+      IS.FrameBufferResource.ResourceRefs.push_back(*ExImageRef);
+      if (auto Err = createDepthStencil(P, IS))
+        return Err;
+    }
 
     return llvm::Error::success();
   }
@@ -948,86 +1013,141 @@ public:
   }
 
   llvm::Error createRenderPass(Pipeline &P, InvocationState &IS) {
-    std::array<VkAttachmentDescription, 2> attachments = {};
+    std::array<VkAttachmentDescription, 2> Attachments = {};
 
-    attachments[0].format =
-        getVKFormat(P.Bindings.RTargetBufferPtr->Format,
-                    P.Bindings.RTargetBufferPtr->Channels);
-    attachments[0].samples = VK_SAMPLE_COUNT_1_BIT;
-    attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachments[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    attachments[0].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    Attachments[0].format = getVKFormat(P.Bindings.RTargetBufferPtr->Format,
+                                        P.Bindings.RTargetBufferPtr->Channels);
+    Attachments[0].samples = VK_SAMPLE_COUNT_1_BIT;
+    Attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    Attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    Attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    Attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    Attachments[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    Attachments[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-    attachments[1].format = VK_FORMAT_D32_SFLOAT_S8_UINT;
-    attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
-    attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    attachments[1].finalLayout =
+    Attachments[1].format = VK_FORMAT_D32_SFLOAT_S8_UINT;
+    Attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
+    Attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    Attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    Attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    Attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    Attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    Attachments[1].finalLayout =
         VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-    VkAttachmentReference colorReference = {};
-    colorReference.attachment = 0;
-    colorReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    VkAttachmentReference ColorReference = {};
+    ColorReference.attachment = 0;
+    ColorReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-    VkAttachmentReference depthReference = {};
-    depthReference.attachment = 1;
-    depthReference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    VkAttachmentReference DepthReference = {};
+    DepthReference.attachment = 1;
+    DepthReference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-    VkSubpassDescription subpassDescription = {};
-    subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpassDescription.colorAttachmentCount = 1;
-    subpassDescription.pColorAttachments = &colorReference;
-    subpassDescription.pDepthStencilAttachment = &depthReference;
-    subpassDescription.inputAttachmentCount = 0;
-    subpassDescription.pInputAttachments = nullptr;
-    subpassDescription.preserveAttachmentCount = 0;
-    subpassDescription.pPreserveAttachments = nullptr;
-    subpassDescription.pResolveAttachments = nullptr;
+    VkSubpassDescription SubpassDescription = {};
+    SubpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    SubpassDescription.colorAttachmentCount = 1;
+    SubpassDescription.pColorAttachments = &ColorReference;
+    SubpassDescription.pDepthStencilAttachment = &DepthReference;
+    SubpassDescription.inputAttachmentCount = 0;
+    SubpassDescription.pInputAttachments = nullptr;
+    SubpassDescription.preserveAttachmentCount = 0;
+    SubpassDescription.pPreserveAttachments = nullptr;
+    SubpassDescription.pResolveAttachments = nullptr;
 
-    std::array<VkSubpassDependency, 2> dependencies = {};
+    std::array<VkSubpassDependency, 2> Dependencies = {};
 
-    dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
-    dependencies[0].dstSubpass = 0;
-    dependencies[0].srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+    Dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+    Dependencies[0].dstSubpass = 0;
+    Dependencies[0].srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
                                    VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-    dependencies[0].dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+    Dependencies[0].dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
                                    VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-    dependencies[0].srcAccessMask =
+    Dependencies[0].srcAccessMask =
         VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-    dependencies[0].dstAccessMask =
+    Dependencies[0].dstAccessMask =
         VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
         VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-    dependencies[0].dependencyFlags = 0;
+    Dependencies[0].dependencyFlags = 0;
 
-    dependencies[1].srcSubpass = VK_SUBPASS_EXTERNAL;
-    dependencies[1].dstSubpass = 0;
-    dependencies[1].srcStageMask =
+    Dependencies[1].srcSubpass = VK_SUBPASS_EXTERNAL;
+    Dependencies[1].dstSubpass = 0;
+    Dependencies[1].srcStageMask =
         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependencies[1].dstStageMask =
+    Dependencies[1].dstStageMask =
         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependencies[1].srcAccessMask = 0;
-    dependencies[1].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+    Dependencies[1].srcAccessMask = 0;
+    Dependencies[1].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
                                     VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
-    dependencies[1].dependencyFlags = 0;
+    Dependencies[1].dependencyFlags = 0;
 
     VkRenderPassCreateInfo RPCI = {};
     RPCI.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    RPCI.attachmentCount = static_cast<uint32_t>(attachments.size());
-    RPCI.pAttachments = attachments.data();
+    RPCI.attachmentCount = static_cast<uint32_t>(Attachments.size());
+    RPCI.pAttachments = Attachments.data();
     RPCI.subpassCount = 1;
-    RPCI.pSubpasses = &subpassDescription;
-    RPCI.dependencyCount = static_cast<uint32_t>(dependencies.size());
-    RPCI.pDependencies = dependencies.data();
+    RPCI.pSubpasses = &SubpassDescription;
+    RPCI.dependencyCount = static_cast<uint32_t>(Dependencies.size());
+    RPCI.pDependencies = Dependencies.data();
 
     if (vkCreateRenderPass(IS.Device, &RPCI, nullptr, &IS.RenderPass))
       return llvm::createStringError(std::errc::device_or_resource_busy,
                                      "Failed to create render pass.");
+    return llvm::Error::success();
+  }
+
+  llvm::Error createFrameBuffer(Pipeline &P, InvocationState &IS) {
+    std::array<VkImageView, 2> Views = {};
+    VkImageViewCreateInfo ViewCreateInfo = {};
+    ViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    ViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    ViewCreateInfo.format = getVKFormat(P.Bindings.RTargetBufferPtr->Format,
+                                        P.Bindings.RTargetBufferPtr->Channels);
+    ViewCreateInfo.components = {VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G,
+                                 VK_COMPONENT_SWIZZLE_B,
+                                 VK_COMPONENT_SWIZZLE_A};
+    ViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    ViewCreateInfo.subresourceRange.baseMipLevel = 0;
+    ViewCreateInfo.subresourceRange.baseArrayLayer = 0;
+    ViewCreateInfo.subresourceRange.layerCount = 1;
+    ViewCreateInfo.subresourceRange.levelCount = 1;
+    ViewCreateInfo.image = IS.FrameBufferResource.ResourceRefs[0].Image.Image;
+    if (vkCreateImageView(IS.Device, &ViewCreateInfo, nullptr, &Views[0]))
+      return llvm::createStringError(
+          std::errc::device_or_resource_busy,
+          "Failed to create frame buffer image view.");
+    IS.ImageViews.push_back(Views[0]);
+
+    VkImageViewCreateInfo DepthStencilViewCi = {};
+    DepthStencilViewCi.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    DepthStencilViewCi.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    DepthStencilViewCi.format = VK_FORMAT_D32_SFLOAT_S8_UINT;
+    DepthStencilViewCi.subresourceRange = {};
+    DepthStencilViewCi.subresourceRange.aspectMask =
+        VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+    DepthStencilViewCi.subresourceRange.baseMipLevel = 0;
+    DepthStencilViewCi.subresourceRange.levelCount = 1;
+    DepthStencilViewCi.subresourceRange.baseArrayLayer = 0;
+    DepthStencilViewCi.subresourceRange.layerCount = 1;
+    DepthStencilViewCi.image = IS.DepthStencil.Image;
+    if (vkCreateImageView(IS.Device, &DepthStencilViewCi, nullptr, &Views[1]))
+      return llvm::createStringError(
+          std::errc::device_or_resource_busy,
+          "Failed to create depth stencil image view.");
+    IS.ImageViews.push_back(Views[1]);
+
+    VkFramebufferCreateInfo FbufCreateInfo = {};
+    FbufCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+    FbufCreateInfo.renderPass = IS.RenderPass;
+    FbufCreateInfo.attachmentCount = Views.size();
+    FbufCreateInfo.pAttachments = Views.data();
+    FbufCreateInfo.width = P.Bindings.RTargetBufferPtr->OutputProps.Width;
+    FbufCreateInfo.height = P.Bindings.RTargetBufferPtr->OutputProps.Height;
+    FbufCreateInfo.layers = 1;
+
+    if (vkCreateFramebuffer(IS.Device, &FbufCreateInfo, nullptr,
+                            &IS.FrameBuffer))
+      return llvm::createStringError(std::errc::device_or_resource_busy,
+                                     "Failed to create frame buffer.");
     return llvm::Error::success();
   }
 
@@ -1164,6 +1284,8 @@ public:
     PipelineCreateInfo.pViewportState = &ViewStateCI;
     PipelineCreateInfo.pDepthStencilState = &DepthStencilStateCI;
     PipelineCreateInfo.pDynamicState = &DynamicStateCI;
+    PipelineCreateInfo.renderPass = IS.RenderPass;
+    PipelineCreateInfo.layout = IS.PipelineLayout;
 
     if (vkCreateGraphicsPipelines(IS.Device, IS.PipelineCache, 1,
                                   &PipelineCreateInfo, nullptr, &IS.Pipeline))
@@ -1374,7 +1496,7 @@ public:
                             IS.DescriptorSets.size(), IS.DescriptorSets.data(),
                             0, 0);
 
-    if (IS.Shaders[0].Stage != Stages::Compute) {
+    if (IS.Shaders[0].Stage == Stages::Compute) {
       const llvm::ArrayRef<int> DispatchSize =
           llvm::ArrayRef<int>(P.Shaders[0].DispatchSize);
       vkCmdDispatch(IS.CmdBuffer, DispatchSize[0], DispatchSize[1],
@@ -1471,16 +1593,19 @@ public:
     if (auto Err = createShaderModules(P, State))
       return Err;
     llvm::outs() << "Shader module created.\n";
-    if (P.Shaders[0].Stage != Stages::Compute) {
-      if (auto Err = createRenderPass(P, State))
-        return Err;
-      llvm::outs() << "Render pass created.\n";
-    }
     if (auto Err = createCommandBuffer(State))
       return Err;
     llvm::outs() << "Copy command buffer created.\n";
     if (auto Err = createBuffers(P, State))
       return Err;
+    if (P.Shaders[0].Stage != Stages::Compute) {
+      if (auto Err = createRenderPass(P, State))
+        return Err;
+      llvm::outs() << "Render pass created.\n";
+      if (auto Err = createFrameBuffer(P, State))
+        return Err;
+      llvm::outs() << "Frame buffer created.\n";
+    }
     llvm::outs() << "Memory buffers created.\n";
     if (auto Err = executeCommandBuffer(State))
       return Err;
@@ -1494,9 +1619,6 @@ public:
     if (auto Err = createDescriptorSets(P, State))
       return Err;
     llvm::outs() << "Descriptor sets created.\n";
-    if (auto Err = createShaderModules(P, State))
-      return Err;
-    llvm::outs() << "Shader module created.\n";
     if (auto Err = createPipeline(P, State))
       return Err;
     llvm::outs() << "Compute pipeline created.\n";
