@@ -255,6 +255,7 @@ private:
     VkDescriptorType DescriptorType;
     uint64_t Size;
     Buffer *BufferPtr;
+    VkImageLayout ImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     llvm::SmallVector<ResourceRef> ResourceRefs;
   };
 
@@ -734,6 +735,8 @@ public:
           P.Bindings.RTargetBufferPtr, false};
       IS.FrameBufferResource.Size = P.Bindings.RTargetBufferPtr->size();
       IS.FrameBufferResource.BufferPtr = P.Bindings.RTargetBufferPtr;
+      IS.FrameBufferResource.ImageLayout =
+          VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
       auto ExHostBuf = createBuffer(
           IS,
           VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
@@ -751,7 +754,7 @@ public:
       if (auto Err = createDepthStencil(P, IS))
         return Err;
 
-      Resource const VertexBuffer = {
+      const Resource VertexBuffer = {
           ResourceKind::StructuredBuffer, "VertexBuffer", {}, {},
           P.Bindings.VertexBufferPtr,     false};
       auto ExVHostBuf =
@@ -1346,8 +1349,9 @@ public:
       ImageBarrier.subresourceRange = SubRange;
       ImageBarrier.srcAccessMask = 0;
       ImageBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-      ImageBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+      ImageBarrier.oldLayout = R.ImageLayout;
       ImageBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+      R.ImageLayout = VK_IMAGE_LAYOUT_GENERAL;
 
       for (auto &ResRef : R.ResourceRefs) {
         ImageBarrier.image = ResRef.Image.Image;
@@ -1405,8 +1409,9 @@ public:
       ImageBarrier.subresourceRange = SubRange;
       ImageBarrier.srcAccessMask = 0;
       ImageBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-      ImageBarrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+      ImageBarrier.oldLayout = R.ImageLayout;
       ImageBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+      R.ImageLayout = VK_IMAGE_LAYOUT_GENERAL;
 
       for (auto &ResRef : R.ResourceRefs) {
         ImageBarrier.image = ResRef.Image.Image;
@@ -1534,7 +1539,7 @@ public:
                              &IS.VertexBuffer->Device.Buffer, Offsets);
       vkCmdDraw(IS.CmdBuffer, P.Bindings.getVertexCount(), 0, 0, 0);
       vkCmdEndRenderPass(IS.CmdBuffer);
-      copyResourceDataToDevice(IS, IS.FrameBufferResource);
+      copyResourceDataToHost(IS, IS.FrameBufferResource);
     }
 
     for (auto &R : IS.Resources)
