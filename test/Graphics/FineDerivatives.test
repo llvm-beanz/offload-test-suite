@@ -22,7 +22,7 @@ Texture2D<float> g_tex : register(t0);
 float4 main(PSInput input) : SV_TARGET {
   int3 offset = int3((input.uv * 64.0) % 4, 0);
   float val = g_tex.Load(offset);
-  return float4(ddx_fine(val), ddy_fine(val), ddx_coarse(val), ddy_coarse(val));
+  return clamp(float4(ddx_fine(val), ddy_fine(val), ddx_coarse(val), ddy_coarse(val)), 0.0.xxxx, 1.0.xxxx);
 }
 #--- pipeline.yaml
 ---
