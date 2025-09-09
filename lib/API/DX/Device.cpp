@@ -1213,7 +1213,7 @@ public:
     std::vector<D3D12_INPUT_ELEMENT_DESC> inputLayout;
     for (size_t i = 0; i < P.Bindings.VertexAttributes.size(); ++i) {
       const auto &Attr = P.Bindings.VertexAttributes[i];
-      inputLayout.push_back({i == 0 ? "POSITION" : "TEXCOORD", 0,
+      inputLayout.push_back({i == 0 ? "POSITION" : "COLOR", 0,
                              getDXFormat(Attr.Format, Attr.Channels), 0,
                              static_cast<UINT>(Attr.Offset),
                              D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0});
@@ -1318,7 +1318,7 @@ public:
     }
 
     llvm::outs() << "[DX] About to issue DrawInstanced(6)\n";
-    IS.CmdList->DrawInstanced(6, 1, 0, 0);
+    IS.CmdList->DrawInstanced(P.Bindings.getVertexCount(), 1, 0, 0);
     llvm::outs() << "[DX] DrawInstanced issued\n";
 
     // Transition RT to copy source and copy to readback
