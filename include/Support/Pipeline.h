@@ -325,6 +325,14 @@ struct Pipeline {
         return &B;
     return nullptr;
   }
+
+  bool isGraphics() const {
+    return !isCompute();
+  }
+
+  bool isCompute() const {
+    return Shaders.size() == 1 && Shaders[0].Stage == Stages::Compute;
+  }
 };
 } // namespace offloadtest
 
