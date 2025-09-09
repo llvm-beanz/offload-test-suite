@@ -284,7 +284,7 @@ struct IOBindings {
   }
 
   uint32_t getVertexCount() const {
-    return getVertexStride() / RTargetBufferPtr->size();
+    return VertexBufferPtr->size() / getVertexStride();
   }
 };
 

@@ -180,19 +180,16 @@ getMemoryIndex(VkPhysicalDevice Device, uint32_t MemoryTypeBits,
                VkMemoryPropertyFlags MemoryFlags) {
   VkPhysicalDeviceMemoryProperties MemProperties;
   vkGetPhysicalDeviceMemoryProperties(Device, &MemProperties);
-  uint32_t MemIdx = 0;
-  for (; MemIdx < MemProperties.memoryTypeCount;
-       ++MemIdx, MemoryTypeBits >>= 1) {
-    if ((MemoryTypeBits & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) &&
-        ((MemProperties.memoryTypes[MemIdx].propertyFlags & MemoryFlags) ==
-         MemoryFlags)) {
-      break;
-    }
+  for (uint32_t i = 0; i < MemProperties.memoryTypeCount; ++i) {
+    const uint32_t Bit = (1u << i);
+    if ((MemoryTypeBits & Bit) == 0)
+      continue;
+    if ((MemProperties.memoryTypes[i].propertyFlags & MemoryFlags) ==
+        MemoryFlags)
+      return i;
   }
-  if (MemIdx >= MemProperties.memoryTypeCount)
-    return llvm::createStringError(std::errc::not_enough_memory,
-                                   "Could not identify appropriate memory.");
-  return MemIdx;
+  return llvm::createStringError(std::errc::not_enough_memory,
+                                 "Could not identify appropriate memory.");
 }
 
 namespace {
@@ -451,24 +448,43 @@ private:
 public:
   llvm::Error createDevice(InvocationState &IS) {
 
-    // Find a queue that supports compute
+    // Find a queue family. Prefer one that supports both GRAPHICS and COMPUTE,
+    // otherwise prefer GRAPHICS, otherwise COMPUTE.
     uint32_t QueueCount = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(Device, &QueueCount, 0);
-    const std::unique_ptr<VkQueueFamilyProperties[]> QueueFamilyProps =
-        std::unique_ptr<VkQueueFamilyProperties[]>(
-            new VkQueueFamilyProperties[QueueCount]);
+    vkGetPhysicalDeviceQueueFamilyProperties(Device, &QueueCount, nullptr);
+    if (QueueCount == 0)
+      return llvm::createStringError(std::errc::no_such_device,
+                                     "No queue families reported.");
+
+    const std::unique_ptr<VkQueueFamilyProperties[]> QueueFamilyProps(
+        new VkQueueFamilyProperties[QueueCount]);
     vkGetPhysicalDeviceQueueFamilyProperties(Device, &QueueCount,
                                              QueueFamilyProps.get());
-    uint32_t QueueIdx = 0;
-    for (; QueueIdx < QueueCount; ++QueueIdx)
-      if (QueueFamilyProps.get()[QueueIdx].queueFlags & VK_QUEUE_COMPUTE_BIT)
+
+    int SelectedIdx = -1;
+    for (uint32_t i = 0; i < QueueCount; ++i) {
+      const VkQueueFlags Flags = QueueFamilyProps[i].queueFlags;
+      // Prefer family supporting both GRAPHICS and COMPUTE
+      if ((Flags & VK_QUEUE_GRAPHICS_BIT) && (Flags & VK_QUEUE_COMPUTE_BIT)) {
+        SelectedIdx = static_cast<int>(i);
         break;
-    if (QueueIdx >= QueueCount)
+      }
+      // Otherwise prefer GRAPHICS
+      if (SelectedIdx == -1 && (Flags & VK_QUEUE_GRAPHICS_BIT))
+        SelectedIdx = static_cast<int>(i);
+      // Otherwise accept COMPUTE if no other choice yet
+      if (SelectedIdx == -1 && (Flags & VK_QUEUE_COMPUTE_BIT))
+        SelectedIdx = static_cast<int>(i);
+    }
+
+    if (SelectedIdx == -1)
       return llvm::createStringError(std::errc::no_such_device,
-                                     "No compute queue found.");
+                                     "No suitable queue family found.");
+
+    uint32_t QueueIdx = static_cast<uint32_t>(SelectedIdx);
 
     VkDeviceQueueCreateInfo QueueInfo = {};
-    const float QueuePriority = 0.0f;
+    const float QueuePriority = 1.0f;
     QueueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
     QueueInfo.queueFamilyIndex = QueueIdx;
     QueueInfo.queueCount = 1;
@@ -729,7 +745,7 @@ public:
       }
     }
 
-    if (IS.Shaders[0].Stage != Stages::Compute) {
+    if (P.isGraphics()) {
       Resource FrameBuffer = {
           ResourceKind::Texture2D,     "RenderTarget", {}, {},
           P.Bindings.RTargetBufferPtr, false};
@@ -1188,7 +1204,7 @@ public:
       return llvm::createStringError(std::errc::device_or_resource_busy,
                                      "Failed to create pipeline cache.");
 
-    if (IS.Shaders[0].Stage == Stages::Compute) {
+    if (P.isCompute()) {
       const CompiledShader &S = IS.Shaders[0];
       assert(IS.Shaders.size() == 1 &&
              "Currently only support one compute shader");
@@ -1487,7 +1503,7 @@ public:
     for (auto &R : IS.Resources)
       copyResourceDataToDevice(IS, R);
 
-    if (IS.Shaders[0].Stage != Stages::Compute) {
+    if (P.isGraphics()) {
       VkClearValue ClearValues[2] = {};
       ClearValues[0].color = {{0.0f, 0.0f, 0.0f, 0.0f}};
       ClearValues[1].depthStencil = {1.0f, 0};
@@ -1507,19 +1523,24 @@ public:
                            VK_SUBPASS_CONTENTS_INLINE);
 
       VkViewport Viewport = {};
-      Viewport.width = P.Bindings.RTargetBufferPtr->OutputProps.Width;
-      Viewport.height = P.Bindings.RTargetBufferPtr->OutputProps.Height;
-      Viewport.maxDepth = 1.0f;
+      // Vulkan VkViewport fields: x, y, width, height, minDepth, maxDepth
+      Viewport.x = 0.0f;
+      Viewport.y = 0.0f;
+      Viewport.width = static_cast<float>(P.Bindings.RTargetBufferPtr->OutputProps.Width);
+      Viewport.height = static_cast<float>(P.Bindings.RTargetBufferPtr->OutputProps.Height);
       Viewport.minDepth = 0.0f;
+      Viewport.maxDepth = 1.0f;
       vkCmdSetViewport(IS.CmdBuffer, 0, 1, &Viewport);
 
       VkRect2D Scissor = {};
+      // ensure scissor offset is explicit
+      Scissor.offset = {0, 0};
       Scissor.extent.width = P.Bindings.RTargetBufferPtr->OutputProps.Width;
       Scissor.extent.height = P.Bindings.RTargetBufferPtr->OutputProps.Height;
       vkCmdSetScissor(IS.CmdBuffer, 0, 1, &Scissor);
     }
 
-    const VkPipelineBindPoint BindPoint = IS.Shaders[0].Stage != Stages::Compute
+    const VkPipelineBindPoint BindPoint = P.isGraphics()
                                               ? VK_PIPELINE_BIND_POINT_GRAPHICS
                                               : VK_PIPELINE_BIND_POINT_COMPUTE;
     vkCmdBindPipeline(IS.CmdBuffer, BindPoint, IS.Pipeline);
@@ -1527,17 +1548,26 @@ public:
                             IS.DescriptorSets.size(), IS.DescriptorSets.data(),
                             0, 0);
 
-    if (IS.Shaders[0].Stage == Stages::Compute) {
+    if (P.isCompute()) {
       const llvm::ArrayRef<int> DispatchSize =
           llvm::ArrayRef<int>(P.Shaders[0].DispatchSize);
       vkCmdDispatch(IS.CmdBuffer, DispatchSize[0], DispatchSize[1],
                     DispatchSize[2]);
+      llvm::outs() << "Dispatched compute shader: { " << DispatchSize[0]
+                   << ", " << DispatchSize[1] << ", " << DispatchSize[2]
+                   << " }\n";
     } else {
       VkDeviceSize Offsets[1]{0};
       assert(IS.VertexBuffer.has_value());
       vkCmdBindVertexBuffers(IS.CmdBuffer, 0, 1,
                              &IS.VertexBuffer->Device.Buffer, Offsets);
-      vkCmdDraw(IS.CmdBuffer, P.Bindings.getVertexCount(), 0, 0, 0);
+      // instanceCount must be >=1 to draw; previously was 0 which draws nothing
+      vkCmdDraw(IS.CmdBuffer, P.Bindings.getVertexCount(), 1, 0, 0);
+      llvm::outs() << "Drew " << P.Bindings.getVertexCount() << " vertices.\n";
+      llvm::outs() << "Vertex stride: " << P.Bindings.getVertexStride()
+                   << " bytes.\n";
+      llvm::outs() << "Vertex buffer size: "
+                   << P.Bindings.VertexBufferPtr->size() << " bytes.\n";
       vkCmdEndRenderPass(IS.CmdBuffer);
       copyResourceDataToHost(IS, IS.FrameBufferResource);
     }
@@ -1633,7 +1663,7 @@ public:
     llvm::outs() << "Copy command buffer created.\n";
     if (auto Err = createBuffers(P, State))
       return Err;
-    if (P.Shaders[0].Stage != Stages::Compute) {
+    if (P.isGraphics()) {
       if (auto Err = createRenderPass(P, State))
         return Err;
       llvm::outs() << "Render pass created.\n";
