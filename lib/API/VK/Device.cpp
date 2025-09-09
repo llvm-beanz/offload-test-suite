@@ -279,6 +279,7 @@ private:
     ResourceBundle FrameBufferResource = {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 0,
                                           nullptr};
     ImageRef DepthStencil = {0, 0, 0};
+    std::optional<ResourceRef> VertexBuffer = std::nullopt;
 
     VkRenderPass RenderPass;
     uint32_t ShaderStageMask = 0;
@@ -591,7 +592,8 @@ public:
   }
 
   llvm::Expected<ResourceRef> createImage(InvocationState &IS, Resource &R,
-                                          BufferRef &Host, int UsageOverride = 0) {
+                                          BufferRef &Host,
+                                          int UsageOverride = 0) {
     const offloadtest::Buffer &B = *R.BufferPtr;
     VkImageCreateInfo ImageCreateInfo = {};
     ImageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -607,11 +609,11 @@ public:
     ImageCreateInfo.extent = {static_cast<uint32_t>(B.OutputProps.Width),
                               static_cast<uint32_t>(B.OutputProps.Height), 1};
     if (UsageOverride == 0) {
-    ImageCreateInfo.usage =
-        VK_IMAGE_USAGE_TRANSFER_DST_BIT |
-        (R.isReadWrite()
-             ? (VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
-             : VK_IMAGE_USAGE_SAMPLED_BIT);
+      ImageCreateInfo.usage =
+          VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+          (R.isReadWrite()
+               ? (VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
+               : VK_IMAGE_USAGE_SAMPLED_BIT);
     } else {
       ImageCreateInfo.usage = UsageOverride;
     }
@@ -739,12 +741,36 @@ public:
           FrameBuffer.BufferPtr->Data[0].get());
       if (!ExHostBuf)
         return ExHostBuf.takeError();
-      auto ExImageRef = createImage(IS, FrameBuffer, *ExHostBuf, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+      auto ExImageRef = createImage(IS, FrameBuffer, *ExHostBuf,
+                                    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+                                        VK_IMAGE_USAGE_SAMPLED_BIT |
+                                        VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
       if (!ExImageRef)
         return ExImageRef.takeError();
       IS.FrameBufferResource.ResourceRefs.push_back(*ExImageRef);
       if (auto Err = createDepthStencil(P, IS))
         return Err;
+
+      Resource const VertexBuffer = {
+          ResourceKind::StructuredBuffer, "VertexBuffer", {}, {},
+          P.Bindings.VertexBufferPtr,     false};
+      auto ExVHostBuf =
+          createBuffer(IS, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, VertexBuffer.size(),
+                       VertexBuffer.BufferPtr->Data[0].get());
+      if (!ExVHostBuf)
+        return ExVHostBuf.takeError();
+      auto ExDeviceBuf = createBuffer(
+          IS,
+          VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VertexBuffer.size());
+      if (!ExDeviceBuf)
+        return ExDeviceBuf.takeError();
+      VkBufferCopy Copy = {};
+      Copy.size = VertexBuffer.size();
+      vkCmdCopyBuffer(IS.CmdBuffer, ExVHostBuf->Buffer, ExDeviceBuf->Buffer, 1,
+                      &Copy);
+      IS.VertexBuffer = ResourceRef(*ExVHostBuf, *ExDeviceBuf);
     }
 
     return llvm::Error::success();
@@ -1502,6 +1528,10 @@ public:
       vkCmdDispatch(IS.CmdBuffer, DispatchSize[0], DispatchSize[1],
                     DispatchSize[2]);
     } else {
+      VkDeviceSize Offsets[1]{0};
+      assert(IS.VertexBuffer.has_value());
+      vkCmdBindVertexBuffers(IS.CmdBuffer, 0, 1,
+                             &IS.VertexBuffer->Device.Buffer, Offsets);
       vkCmdDraw(IS.CmdBuffer, P.Bindings.getVertexCount(), 0, 0, 0);
       vkCmdEndRenderPass(IS.CmdBuffer);
       copyResourceDataToDevice(IS, IS.FrameBufferResource);
