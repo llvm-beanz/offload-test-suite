@@ -1344,14 +1344,40 @@ public:
     if (auto Err = executeCommandList(IS))
       return Err;
 
-    // Map readback and copy into host buffer
+    // Map readback and copy into host buffer, accounting for row pitch and
+    // flipping vertical orientation (render target top-left -> test expects
+    // bottom-left).
     void *Mapped = nullptr;
     if (auto Err = HR::toError(RTReadback->Map(0, nullptr, &Mapped),
                                "Failed to map render target readback"))
       return Err;
-    // Copy exactly the requested size
-    memcpy(P.Bindings.RTargetBufferPtr->Data[0].get(), Mapped,
-           P.Bindings.RTargetBufferPtr->size());
+
+    // Query the copy footprint to get the actual padded row pitch used by the
+    // copy operation.
+    D3D12_RESOURCE_DESC RTDesc = RT->GetDesc();
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT Placed = {};
+    UINT NumRows = 0;
+    UINT64 RowSizeInBytes = 0;
+    UINT64 TotalBytes = 0;
+    Device->GetCopyableFootprints(&RTDesc, 0u, 1u, 0u, &Placed, &NumRows,
+                                  &RowSizeInBytes, &TotalBytes);
+
+    const uint32_t RowPitch = Placed.Footprint.RowPitch;
+    const uint32_t RowBytes = static_cast<uint32_t>(B.getElementSize() *
+                                                   B.OutputProps.Width);
+    const uint32_t Height = static_cast<uint32_t>(B.OutputProps.Height);
+
+    uint8_t *SrcBase = reinterpret_cast<uint8_t *>(Mapped);
+    uint8_t *DstBase = reinterpret_cast<uint8_t *>(
+        P.Bindings.RTargetBufferPtr->Data[0].get());
+
+    // Copy rows; reverse vertically so output is oriented as the test expects.
+    for (uint32_t y = 0; y < Height; ++y) {
+      uint8_t *SrcRow = SrcBase + static_cast<size_t>(y) * RowPitch;
+      uint8_t *DstRow = DstBase + static_cast<size_t>(Height - 1 - y) * RowBytes;
+      memcpy(DstRow, SrcRow, RowBytes);
+    }
+
     RTReadback->Unmap(0, nullptr);
 
     llvm::outs() << "[DX] executeGraphics() - finished, copied "

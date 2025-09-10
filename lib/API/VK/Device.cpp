@@ -1526,8 +1526,10 @@ public:
       // Vulkan VkViewport fields: x, y, width, height, minDepth, maxDepth
       Viewport.x = 0.0f;
       Viewport.y = 0.0f;
-      Viewport.width = static_cast<float>(P.Bindings.RTargetBufferPtr->OutputProps.Width);
-      Viewport.height = static_cast<float>(P.Bindings.RTargetBufferPtr->OutputProps.Height);
+      Viewport.width =
+          static_cast<float>(P.Bindings.RTargetBufferPtr->OutputProps.Width);
+      Viewport.height =
+          static_cast<float>(P.Bindings.RTargetBufferPtr->OutputProps.Height);
       Viewport.minDepth = 0.0f;
       Viewport.maxDepth = 1.0f;
       vkCmdSetViewport(IS.CmdBuffer, 0, 1, &Viewport);
@@ -1553,9 +1555,8 @@ public:
           llvm::ArrayRef<int>(P.Shaders[0].DispatchSize);
       vkCmdDispatch(IS.CmdBuffer, DispatchSize[0], DispatchSize[1],
                     DispatchSize[2]);
-      llvm::outs() << "Dispatched compute shader: { " << DispatchSize[0]
-                   << ", " << DispatchSize[1] << ", " << DispatchSize[2]
-                   << " }\n";
+      llvm::outs() << "Dispatched compute shader: { " << DispatchSize[0] << ", "
+                   << DispatchSize[1] << ", " << DispatchSize[2] << " }\n";
     } else {
       VkDeviceSize Offsets[1]{0};
       assert(IS.VertexBuffer.has_value());
@@ -1604,6 +1605,25 @@ public:
           vkUnmapMemory(IS.Device, ResRefIt->Host.Memory);
         }
       }
+    }
+
+    // Copy back the frame buffer data if this was a graphics pipeline.
+    if (P.isGraphics()) {
+      VkMappedMemoryRange Range = {};
+      Range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
+      Range.offset = 0;
+      Range.size = VK_WHOLE_SIZE;
+      ResourceRef &ResRef = IS.FrameBufferResource.ResourceRefs[0];
+      
+      void *Mapped = nullptr;
+      vkMapMemory(IS.Device, ResRef.Host.Memory, 0, VK_WHOLE_SIZE, 0, &Mapped);
+      
+      Range.memory = ResRef.Host.Memory;
+      vkInvalidateMappedMemoryRanges(IS.Device, 1, &Range);
+      
+      const Buffer &B = *P.Bindings.RTargetBufferPtr;      
+      memcpy(B.Data[0].get(), Mapped, B.size());
+      vkUnmapMemory(IS.Device, ResRef.Host.Memory);
     }
     return llvm::Error::success();
   }
