@@ -103,9 +103,7 @@ class MTLDevice : public offloadtest::Device {
     MTL::VertexDescriptor *VertexDescriptor;
     llvm::SmallVector<MTL::Texture *> Textures;
     llvm::SmallVector<MTL::Buffer *> Buffers;
-    MTL::Texture *FrameBufferTexture =
-        nullptr; // shared texture for CPU readback
-    MTL::Texture *RenderTargetTexture = nullptr; // private GPU render target
+    MTL::Texture *FrameBufferTexture = nullptr;
   };
 
   llvm::Error setupVertexShader(InvocationState &IS, const Pipeline &P,
@@ -394,33 +392,19 @@ class MTLDevice : public offloadtest::Device {
       MTL::TextureDescriptor *TDesc =
           MTL::TextureDescriptor::texture2DDescriptor(Format, Width, Height,
                                                       false);
-      // Create a private GPU-only render target texture. Many drivers expect
-      // render targets to be private; rendering into a shared texture may
-      // not produce visible results. After rendering we'll blit into a
-      // shared texture for CPU readback.
-      MTL::TextureDescriptor *RTDesc = TDesc->copy();
-      RTDesc->setUsage(MTL::TextureUsageRenderTarget |
-                       MTL::TextureUsageShaderRead);
-      RTDesc->setStorageMode(MTL::StorageModePrivate);
-
-      IS.RenderTargetTexture = Device->newTexture(RTDesc);
-      // Shared texture for readback
-      MTL::TextureDescriptor *SharedDesc = TDesc->copy();
-      SharedDesc->setUsage(MTL::TextureUsageShaderRead |
-                           MTL::TextureUsageShaderWrite);
-      SharedDesc->setStorageMode(MTL::StorageModeShared);
-      IS.FrameBufferTexture = Device->newTexture(SharedDesc);
+  // Create a single shared texture used for both rendering and CPU
+  // readback. Rendering directly into a shared texture can be less
+  // efficient on some drivers, but this simplifies the path and lets us
+  // read back without an explicit blit.
+  MTL::TextureDescriptor *SharedDesc = TDesc->copy();
+  SharedDesc->setUsage(MTL::TextureUsageRenderTarget |
+           MTL::TextureUsageShaderRead |
+           MTL::TextureUsageShaderWrite);
+  SharedDesc->setStorageMode(MTL::StorageModeShared);
+  IS.FrameBufferTexture = Device->newTexture(SharedDesc);
 
       // Debug: print texture properties so we can verify formats and storage
       // modes used for render and readback.
-      if (IS.RenderTargetTexture) {
-        llvm::errs() << "RenderTargetTexture: fmt="
-                     << (int)IS.RenderTargetTexture->pixelFormat()
-                     << " storageMode="
-                     << (int)IS.RenderTargetTexture->storageMode()
-                     << " width=" << IS.RenderTargetTexture->width()
-                     << " height=" << IS.RenderTargetTexture->height() << "\n";
-      }
       if (IS.FrameBufferTexture) {
         llvm::errs() << "FrameBufferTexture: fmt="
                      << (int)IS.FrameBufferTexture->pixelFormat()
@@ -431,7 +415,7 @@ class MTLDevice : public offloadtest::Device {
       }
 
       auto *CADesc = MTL::RenderPassColorAttachmentDescriptor::alloc()->init();
-      CADesc->setTexture(IS.RenderTargetTexture);
+      CADesc->setTexture(IS.FrameBufferTexture);
       CADesc->setLoadAction(MTL::LoadActionClear);
       // Revert diagnostic clear to default (black). We previously cleared to
       // red to verify the blit/readback path; that diagnostic is no longer
@@ -476,23 +460,8 @@ class MTLDevice : public offloadtest::Device {
                                 MTL::RenderStageFragment, 0);*/
       CmdEncoder->endEncoding();
 
-      // Blit copy the GPU-private render target into the shared texture for
-      // CPU readback.
-      MTL::BlitCommandEncoder *Blit = CmdBuffer->blitCommandEncoder();
-      if (Blit) {
-        llvm::errs()
-            << "Blit: copying render target to shared readback texture\n";
-        const MTL::Origin SrcOrigin = MTL::Origin(0, 0, 0);
-        const MTL::Size CopySize =
-            MTL::Size((uint32_t)Width, (uint32_t)Height, 1);
-        // copyFromTexture(source, sourceSlice, sourceLevel, sourceOrigin,
-        //                sourceSize, destination, destSlice, destLevel,
-        //                destOrigin)
-        Blit->copyFromTexture(IS.RenderTargetTexture, 0, 0, SrcOrigin, CopySize,
-                              IS.FrameBufferTexture, 0, 0,
-                              MTL::Origin(0, 0, 0));
-        Blit->endEncoding();
-      }
+  // No blit required when rendering directly into the shared texture.
+  llvm::errs() << "Rendering directly into shared render/readback texture\n";
     }
 
     CmdBuffer->commit();
