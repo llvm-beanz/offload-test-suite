@@ -392,16 +392,16 @@ class MTLDevice : public offloadtest::Device {
       MTL::TextureDescriptor *TDesc =
           MTL::TextureDescriptor::texture2DDescriptor(Format, Width, Height,
                                                       false);
-  // Create a single shared texture used for both rendering and CPU
-  // readback. Rendering directly into a shared texture can be less
-  // efficient on some drivers, but this simplifies the path and lets us
-  // read back without an explicit blit.
-  MTL::TextureDescriptor *SharedDesc = TDesc->copy();
-  SharedDesc->setUsage(MTL::TextureUsageRenderTarget |
-           MTL::TextureUsageShaderRead |
-           MTL::TextureUsageShaderWrite);
-  SharedDesc->setStorageMode(MTL::StorageModeShared);
-  IS.FrameBufferTexture = Device->newTexture(SharedDesc);
+      // Create a single shared texture used for both rendering and CPU
+      // readback. Rendering directly into a shared texture can be less
+      // efficient on some drivers, but this simplifies the path and lets us
+      // read back without an explicit blit.
+      MTL::TextureDescriptor *SharedDesc = TDesc->copy();
+      SharedDesc->setUsage(MTL::TextureUsageRenderTarget |
+                           MTL::TextureUsageShaderRead |
+                           MTL::TextureUsageShaderWrite);
+      SharedDesc->setStorageMode(MTL::StorageModeShared);
+      IS.FrameBufferTexture = Device->newTexture(SharedDesc);
 
       // Debug: print texture properties so we can verify formats and storage
       // modes used for render and readback.
@@ -460,8 +460,9 @@ class MTLDevice : public offloadtest::Device {
                                 MTL::RenderStageFragment, 0);*/
       CmdEncoder->endEncoding();
 
-  // No blit required when rendering directly into the shared texture.
-  llvm::errs() << "Rendering directly into shared render/readback texture\n";
+      // No blit required when rendering directly into the shared texture.
+      llvm::errs()
+          << "Rendering directly into shared render/readback texture\n";
     }
 
     CmdBuffer->commit();
@@ -512,8 +513,20 @@ class MTLDevice : public offloadtest::Device {
       const uint64_t Height = RTarget->OutputProps.Height;
       const size_t ElemSize = RTarget->getElementSize();
       const size_t RowBytes = Width * ElemSize;
-      IS.FrameBufferTexture->getBytes(RTarget->Data[0].get(), RowBytes,
-                                      MTL::Region(0, 0, Width, Height), 0);
+
+      // Read the framebuffer one row at a time into the output buffer.
+      // Read rows from the texture bottom-to-top into the buffer top-to-bottom
+      // so the final image is upright without needing a post-read flip.
+      unsigned char *Buf =
+          reinterpret_cast<unsigned char *>(RTarget->Data[0].get());
+      for (uint64_t R = 0; R < Height; ++R) {
+        const uint32_t SrcRow = (uint32_t)((Height - 1) - R);
+        unsigned char *Dst = Buf + R * RowBytes;
+        IS.FrameBufferTexture->getBytes(
+            Dst, RowBytes, MTL::Region(0, SrcRow, (uint32_t)Width, 1), 0);
+      }
+      llvm::errs() << "copyBack: read rows one-at-a-time (height=" << Height
+                   << ")\n";
 
       // Debug: dump first bytes and, if float format, the first few floats so
       // we can tell whether the readback contains any non-zero data.
