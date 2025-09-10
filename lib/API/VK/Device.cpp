@@ -180,13 +180,13 @@ getMemoryIndex(VkPhysicalDevice Device, uint32_t MemoryTypeBits,
                VkMemoryPropertyFlags MemoryFlags) {
   VkPhysicalDeviceMemoryProperties MemProperties;
   vkGetPhysicalDeviceMemoryProperties(Device, &MemProperties);
-  for (uint32_t i = 0; i < MemProperties.memoryTypeCount; ++i) {
-    const uint32_t Bit = (1u << i);
+  for (uint32_t I = 0; I < MemProperties.memoryTypeCount; ++I) {
+    const uint32_t Bit = (1u << I);
     if ((MemoryTypeBits & Bit) == 0)
       continue;
-    if ((MemProperties.memoryTypes[i].propertyFlags & MemoryFlags) ==
+    if ((MemProperties.memoryTypes[I].propertyFlags & MemoryFlags) ==
         MemoryFlags)
-      return i;
+      return I;
   }
   return llvm::createStringError(std::errc::not_enough_memory,
                                  "Could not identify appropriate memory.");
@@ -462,26 +462,26 @@ public:
                                              QueueFamilyProps.get());
 
     int SelectedIdx = -1;
-    for (uint32_t i = 0; i < QueueCount; ++i) {
-      const VkQueueFlags Flags = QueueFamilyProps[i].queueFlags;
+    for (uint32_t I = 0; I < QueueCount; ++I) {
+      const VkQueueFlags Flags = QueueFamilyProps[I].queueFlags;
       // Prefer family supporting both GRAPHICS and COMPUTE
       if ((Flags & VK_QUEUE_GRAPHICS_BIT) && (Flags & VK_QUEUE_COMPUTE_BIT)) {
-        SelectedIdx = static_cast<int>(i);
+        SelectedIdx = static_cast<int>(I);
         break;
       }
       // Otherwise prefer GRAPHICS
       if (SelectedIdx == -1 && (Flags & VK_QUEUE_GRAPHICS_BIT))
-        SelectedIdx = static_cast<int>(i);
+        SelectedIdx = static_cast<int>(I);
       // Otherwise accept COMPUTE if no other choice yet
       if (SelectedIdx == -1 && (Flags & VK_QUEUE_COMPUTE_BIT))
-        SelectedIdx = static_cast<int>(i);
+        SelectedIdx = static_cast<int>(I);
     }
 
     if (SelectedIdx == -1)
       return llvm::createStringError(std::errc::no_such_device,
                                      "No suitable queue family found.");
 
-    uint32_t QueueIdx = static_cast<uint32_t>(SelectedIdx);
+    const uint32_t QueueIdx = static_cast<uint32_t>(SelectedIdx);
 
     VkDeviceQueueCreateInfo QueueInfo = {};
     const float QueuePriority = 1.0f;
@@ -1613,15 +1613,15 @@ public:
       Range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
       Range.offset = 0;
       Range.size = VK_WHOLE_SIZE;
-      ResourceRef &ResRef = IS.FrameBufferResource.ResourceRefs[0];
-      
+      const ResourceRef &ResRef = IS.FrameBufferResource.ResourceRefs[0];
+
       void *Mapped = nullptr;
       vkMapMemory(IS.Device, ResRef.Host.Memory, 0, VK_WHOLE_SIZE, 0, &Mapped);
-      
+
       Range.memory = ResRef.Host.Memory;
       vkInvalidateMappedMemoryRanges(IS.Device, 1, &Range);
-      
-      const Buffer &B = *P.Bindings.RTargetBufferPtr;      
+
+      const Buffer &B = *P.Bindings.RTargetBufferPtr;
       memcpy(B.Data[0].get(), Mapped, B.size());
       vkUnmapMemory(IS.Device, ResRef.Host.Memory);
     }
