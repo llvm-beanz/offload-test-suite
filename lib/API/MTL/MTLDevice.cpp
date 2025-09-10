@@ -15,6 +15,7 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
+#include <algorithm>
 
 using namespace offloadtest;
 
@@ -102,22 +103,49 @@ class MTLDevice : public offloadtest::Device {
     MTL::VertexDescriptor *VertexDescriptor;
     llvm::SmallVector<MTL::Texture *> Textures;
     llvm::SmallVector<MTL::Buffer *> Buffers;
-    MTL::Texture *FrameBufferTexture = nullptr;
+    MTL::Texture *FrameBufferTexture =
+        nullptr; // shared texture for CPU readback
+    MTL::Texture *RenderTargetTexture = nullptr; // private GPU render target
   };
 
-  llvm::Error setupVertexShader(InvocationState &IS, const Pipeline &P) {
+  llvm::Error setupVertexShader(InvocationState &IS, const Pipeline &P,
+                                MTL::Function *Fn) {
     if (P.Bindings.VertexBufferPtr) {
-      const size_t ResourceCount = P.getDescriptorCount();
+      NS::Array *FnAttrs = Fn->vertexAttributes();
+      // I'm not really sure if there's any valid case for a vertex shader with
+      // no vertex attributes, so we just error if that ever occurs.
+      if (!FnAttrs)
+        return llvm::createStringError(
+            std::errc::invalid_argument,
+            "Vertex shader has no vertex attributes.");
+      if (FnAttrs->count() != P.Bindings.VertexAttributes.size())
+        return llvm::createStringError(
+            std::errc::invalid_argument,
+            "Mismatch between vertex shader attribute count and pipeline "
+            "vertex input count.");
+      // Collect the attribute indices the shader expects so that we can map the
+      // specified attributes onto the correct indices.
+      llvm::SmallVector<uint32_t> ShaderAttrIndices;
+      for (uint32_t Ai = 0; Ai < FnAttrs->count(); ++Ai) {
+        auto *A = static_cast<MTL::VertexAttribute *>(FnAttrs->object(Ai));
+        if (A && A->active())
+          ShaderAttrIndices.push_back(A->attributeIndex());
+      }
+
       IS.VertexDescriptor = MTL::VertexDescriptor::alloc()->init();
       const uint32_t Stride = P.Bindings.getVertexStride();
       for (size_t I = 0; I < P.Bindings.VertexAttributes.size(); ++I) {
         const VertexAttribute &VA = P.Bindings.VertexAttributes[I];
         MTL::VertexAttributeDescriptor *VADesc =
             MTL::VertexAttributeDescriptor::alloc()->init();
-        VADesc->setBufferIndex(ResourceCount);
+        // Vertex attributes are sourced from the vertex buffer bound to the
+        // vertex buffer index 0 on the encoder (see executeCommands()). Use
+        // buffer index 0 here so the descriptor references the same slot.
+        VADesc->setBufferIndex(0);
         VADesc->setOffset(VA.Offset);
         VADesc->setFormat(getMTLVertexFormat(VA.Format, VA.Channels));
-        IS.VertexDescriptor->attributes()->setObject(VADesc, I);
+        IS.VertexDescriptor->attributes()->setObject(VADesc,
+                                                     ShaderAttrIndices[I]);
       }
 
       MTL::VertexBufferLayoutDescriptor *LDesc =
@@ -126,6 +154,33 @@ class MTLDevice : public offloadtest::Device {
       LDesc->setStepRate(1);
       LDesc->setStepFunction(MTL::VertexStepFunctionPerVertex);
       IS.VertexDescriptor->layouts()->setObject(LDesc, 0);
+
+      // Debug: print shader attribute indices and final vertex descriptor
+      // mapping.
+      llvm::errs() << "Shader attribute indices: ";
+      for (auto Idx : ShaderAttrIndices)
+        llvm::errs() << Idx << " ";
+      llvm::errs() << "\n";
+      llvm::errs() << "Vertex descriptor attributes present at indices:";
+      for (uint32_t Ai = 0; Ai < 31; ++Ai) {
+        auto *AD = static_cast<MTL::VertexAttributeDescriptor *>(
+            IS.VertexDescriptor->attributes()->object(Ai));
+        if (AD)
+          llvm::errs() << " " << Ai;
+      }
+      llvm::errs() << "\n";
+      // Print details for the attributes the shader expects.
+      for (uint32_t Idx = 0; Idx < ShaderAttrIndices.size(); ++Idx) {
+        const uint32_t AttrIndex = ShaderAttrIndices[Idx];
+        auto *AD = static_cast<MTL::VertexAttributeDescriptor *>(
+            IS.VertexDescriptor->attributes()->object(AttrIndex));
+        if (AD) {
+          llvm::errs() << "Attribute[" << AttrIndex
+                       << "] bufferIndex=" << AD->bufferIndex()
+                       << " offset=" << AD->offset()
+                       << " format=" << (int)AD->format() << "\n";
+        }
+      }
     }
     return llvm::Error::success();
   }
@@ -169,8 +224,9 @@ class MTLDevice : public offloadtest::Device {
         switch (S.Stage) {
         case Stages::Vertex:
           Desc->setVertexFunction(Fn);
-          if (llvm::Error Err = setupVertexShader(IS, P))
+          if (llvm::Error Err = setupVertexShader(IS, P, Fn))
             return Err;
+
           Desc->setVertexDescriptor(IS.VertexDescriptor);
           break;
         case Stages::Pixel:
@@ -192,9 +248,12 @@ class MTLDevice : public offloadtest::Device {
         const MTL::PixelFormat PF =
             getMTLFormat(P.Bindings.RTargetBufferPtr->Format,
                          P.Bindings.RTargetBufferPtr->Channels);
-        auto *CADesc = Desc->colorAttachments()->object(0);
-        if (CADesc)
-          CADesc->setPixelFormat(PF);
+        // Ensure a color attachment descriptor exists on the pipeline
+        // descriptor and set its pixel format to match the render target.
+        MTL::RenderPipelineColorAttachmentDescriptor *RPCA =
+            MTL::RenderPipelineColorAttachmentDescriptor::alloc()->init();
+        RPCA->setPixelFormat(PF);
+        Desc->colorAttachments()->setObject(RPCA, 0);
       }
 
       IS.RenderPipeline = Device->newRenderPipelineState(Desc, &Error);
@@ -266,19 +325,20 @@ class MTLDevice : public offloadtest::Device {
   }
 
   llvm::Error createBuffers(Pipeline &P, InvocationState &IS) {
-    const size_t GraphicsDescriptorCount = P.isGraphics() ? 1 : 0;
     const size_t ResourceCount = P.getDescriptorCount();
-    const size_t TableSize = sizeof(IRDescriptorTableEntry) *
-                             (ResourceCount + GraphicsDescriptorCount);
-    IS.ArgBuffer =
-        Device->newBuffer(TableSize, MTL::ResourceStorageModeManaged);
+    const size_t TableSize = sizeof(IRDescriptorTableEntry) * ResourceCount;
 
-    uint32_t HeapIndex = 0;
-    for (auto &D : P.Sets) {
-      for (auto &R : D.Resources) {
-        if (auto Err = createDescriptor(R, IS, HeapIndex++))
-          return Err;
+    if (TableSize > 0) {
+      IS.ArgBuffer =
+          Device->newBuffer(TableSize, MTL::ResourceStorageModeManaged);
+      uint32_t HeapIndex = 0;
+      for (auto &D : P.Sets) {
+        for (auto &R : D.Resources) {
+          if (auto Err = createDescriptor(R, IS, HeapIndex++))
+            return Err;
+        }
       }
+      IS.ArgBuffer->didModifyRange(NS::Range::Make(0, IS.ArgBuffer->length()));
     }
     if (P.isGraphics()) {
       IS.VertexBuffer = Device->newBuffer(
@@ -287,16 +347,7 @@ class MTLDevice : public offloadtest::Device {
       // Ensure GPU can see the CPU-initialized vertex data for managed buffers
       IS.VertexBuffer->didModifyRange(
           NS::Range::Make(0, IS.VertexBuffer->length()));
-
-      // Place the vertex buffer in the argument table after all other
-      // resources.
-      auto *TablePtr = (IRDescriptorTableEntry *)IS.ArgBuffer->contents();
-      IRBufferView View = {};
-      View.buffer = IS.VertexBuffer;
-      View.bufferSize = P.Bindings.VertexBufferPtr->size();
-      IRDescriptorTableSetBufferView(&TablePtr[ResourceCount], &View);
     }
-    IS.ArgBuffer->didModifyRange(NS::Range::Make(0, IS.ArgBuffer->length()));
     return llvm::Error::success();
   }
 
@@ -343,18 +394,48 @@ class MTLDevice : public offloadtest::Device {
       MTL::TextureDescriptor *TDesc =
           MTL::TextureDescriptor::texture2DDescriptor(Format, Width, Height,
                                                       false);
-      // Make this texture usable as a render target and shader resource. Use
-      // Shared storage so the CPU can read it after command buffer completion
-      // without an explicit blit/synchronization step on macOS.
-      TDesc->setUsage(MTL::TextureUsageRenderTarget |
-                      MTL::TextureUsageShaderRead |
-                      MTL::TextureUsageShaderWrite);
-      TDesc->setStorageMode(MTL::StorageModeShared);
+      // Create a private GPU-only render target texture. Many drivers expect
+      // render targets to be private; rendering into a shared texture may
+      // not produce visible results. After rendering we'll blit into a
+      // shared texture for CPU readback.
+      MTL::TextureDescriptor *RTDesc = TDesc->copy();
+      RTDesc->setUsage(MTL::TextureUsageRenderTarget |
+                       MTL::TextureUsageShaderRead);
+      RTDesc->setStorageMode(MTL::StorageModePrivate);
 
-      IS.FrameBufferTexture = Device->newTexture(TDesc);
+      IS.RenderTargetTexture = Device->newTexture(RTDesc);
+      // Shared texture for readback
+      MTL::TextureDescriptor *SharedDesc = TDesc->copy();
+      SharedDesc->setUsage(MTL::TextureUsageShaderRead |
+                           MTL::TextureUsageShaderWrite);
+      SharedDesc->setStorageMode(MTL::StorageModeShared);
+      IS.FrameBufferTexture = Device->newTexture(SharedDesc);
+
+      // Debug: print texture properties so we can verify formats and storage
+      // modes used for render and readback.
+      if (IS.RenderTargetTexture) {
+        llvm::errs() << "RenderTargetTexture: fmt="
+                     << (int)IS.RenderTargetTexture->pixelFormat()
+                     << " storageMode="
+                     << (int)IS.RenderTargetTexture->storageMode()
+                     << " width=" << IS.RenderTargetTexture->width()
+                     << " height=" << IS.RenderTargetTexture->height() << "\n";
+      }
+      if (IS.FrameBufferTexture) {
+        llvm::errs() << "FrameBufferTexture: fmt="
+                     << (int)IS.FrameBufferTexture->pixelFormat()
+                     << " storageMode="
+                     << (int)IS.FrameBufferTexture->storageMode()
+                     << " width=" << IS.FrameBufferTexture->width()
+                     << " height=" << IS.FrameBufferTexture->height() << "\n";
+      }
+
       auto *CADesc = MTL::RenderPassColorAttachmentDescriptor::alloc()->init();
-      CADesc->setTexture(IS.FrameBufferTexture);
+      CADesc->setTexture(IS.RenderTargetTexture);
       CADesc->setLoadAction(MTL::LoadActionClear);
+      // Revert diagnostic clear to default (black). We previously cleared to
+      // red to verify the blit/readback path; that diagnostic is no longer
+      // needed and would obscure the actual fragment shader output.
       CADesc->setClearColor(MTL::ClearColor());
       CADesc->setStoreAction(MTL::StoreActionStore);
       Desc->colorAttachments()->setObject(CADesc, 0);
@@ -363,16 +444,67 @@ class MTLDevice : public offloadtest::Device {
           CmdBuffer->renderCommandEncoder(Desc);
 
       CmdEncoder->setRenderPipelineState(IS.RenderPipeline);
+      // Explicitly set viewport to texture dimensions to avoid relying on any
+      // default behavior that might differ across drivers.
+      CmdEncoder->setViewport(
+          MTL::Viewport{0.0, 0.0, (double)Width, (double)Height, 0.0, 1.0});
+      // Disable face culling for diagnostics; some shaders/vertex orders
+      // may produce culled triangles depending on winding conventions.
+      CmdEncoder->setCullMode(MTL::CullModeNone);
+      // Bind vertex buffer at slot 0 to match the vertex descriptor which
+      // references buffer index 0.
+      CmdEncoder->setVertexBuffer(IS.VertexBuffer, 0, 0);
+      // Debug: print vertex count and verify vertex buffer length.
+      llvm::errs() << "Drawing vertices: " << P.Bindings.getVertexCount()
+                   << "\n";
+      llvm::errs() << "Vertex stride: " << P.Bindings.getVertexStride() << "\n";
+      if (IS.VertexBuffer)
+        llvm::errs() << "VertexBuffer length: " << IS.VertexBuffer->length()
+                     << "\n";
+      // Dump the first vertex bytes (interpreting as floats) to confirm data
+      if (IS.VertexBuffer && IS.VertexBuffer->length() >= 16) {
+        float *V = reinterpret_cast<float *>(IS.VertexBuffer->contents());
+        llvm::errs() << "First vertex floats: ";
+        for (int I = 0; I < 7; ++I)
+          llvm::errs() << V[I] << " ";
+        llvm::errs() << "\n";
+      }
       CmdEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0),
                                  P.Bindings.getVertexCount());
 
-      CmdEncoder->memoryBarrier(MTL::BarrierScopeBuffers,
-                                MTL::RenderStageFragment, 0);
+      /*CmdEncoder->memoryBarrier(MTL::BarrierScopeBuffers,
+                                MTL::RenderStageFragment, 0);*/
       CmdEncoder->endEncoding();
+
+      // Blit copy the GPU-private render target into the shared texture for
+      // CPU readback.
+      MTL::BlitCommandEncoder *Blit = CmdBuffer->blitCommandEncoder();
+      if (Blit) {
+        llvm::errs()
+            << "Blit: copying render target to shared readback texture\n";
+        const MTL::Origin SrcOrigin = MTL::Origin(0, 0, 0);
+        const MTL::Size CopySize =
+            MTL::Size((uint32_t)Width, (uint32_t)Height, 1);
+        // copyFromTexture(source, sourceSlice, sourceLevel, sourceOrigin,
+        //                sourceSize, destination, destSlice, destLevel,
+        //                destOrigin)
+        Blit->copyFromTexture(IS.RenderTargetTexture, 0, 0, SrcOrigin, CopySize,
+                              IS.FrameBufferTexture, 0, 0,
+                              MTL::Origin(0, 0, 0));
+        Blit->endEncoding();
+      }
     }
 
     CmdBuffer->commit();
     CmdBuffer->waitUntilCompleted();
+
+    // Debug: print command buffer completion status and any reported error
+    auto Status = CmdBuffer->status();
+    llvm::errs() << "CmdBuffer status=" << (int)Status << "\n";
+    NS::Error *CBErr = CmdBuffer->error();
+    if (CBErr)
+      llvm::errs() << "CmdBuffer error: "
+                   << CBErr->localizedDescription()->utf8String() << "\n";
 
     return llvm::Error::success();
   }
@@ -409,9 +541,58 @@ class MTLDevice : public offloadtest::Device {
       Buffer *RTarget = P.Bindings.RTargetBufferPtr;
       const uint64_t Width = RTarget->OutputProps.Width;
       const uint64_t Height = RTarget->OutputProps.Height;
-      IS.FrameBufferTexture->getBytes(RTarget->Data[0].get(),
-                                      Width * RTarget->getElementSize(),
+      const size_t ElemSize = RTarget->getElementSize();
+      const size_t RowBytes = Width * ElemSize;
+      IS.FrameBufferTexture->getBytes(RTarget->Data[0].get(), RowBytes,
                                       MTL::Region(0, 0, Width, Height), 0);
+
+      // Debug: dump first bytes and, if float format, the first few floats so
+      // we can tell whether the readback contains any non-zero data.
+      llvm::errs() << "copyBack: framebuffer readback width=" << Width
+                   << " height=" << Height << " elemSize=" << ElemSize << "\n";
+      unsigned char *Bytes =
+          reinterpret_cast<unsigned char *>(RTarget->Data[0].get());
+      const size_t DumpBytes = std::min<size_t>(RowBytes, 64);
+      llvm::errs() << "First " << DumpBytes << " bytes: ";
+      for (size_t I = 0; I < DumpBytes; ++I)
+        llvm::errs() << llvm::format_hex_no_prefix((uint32_t)Bytes[I], 2)
+                     << " ";
+      llvm::errs() << "\n";
+      if (ElemSize >= 4) {
+        float *F = reinterpret_cast<float *>(Bytes);
+        const int FDump = std::min<int>(8, (int)(RowBytes / 4));
+        llvm::errs() << "First floats: ";
+        for (int I = 0; I < FDump; ++I)
+          llvm::errs() << F[I] << " ";
+        llvm::errs() << "\n";
+      }
+      // Sample a pixel from row 32 (or the last row if the texture is
+      // smaller) at center X to get a better indicator of rendered content
+      // (avoid the cleared first rows).
+      if (Height > 0) {
+        const uint64_t RowIndex = (Height > 32) ? 32 : (Height - 1);
+        const size_t RowOffset = RowIndex * RowBytes;
+        const size_t CenterX = Width / 2;
+        const size_t PixelOffset = RowOffset + CenterX * ElemSize;
+        const size_t MaxDump = (RowOffset + RowBytes) - (CenterX * ElemSize);
+        const size_t DumpBytes2 = std::min<size_t>(ElemSize * 4, MaxDump);
+        llvm::errs() << "Row32 sample (row=" << RowIndex
+                     << ") center pixel offset=" << PixelOffset
+                     << " dumpBytes=" << DumpBytes2 << " bytes: ";
+        for (size_t I = 0; I < DumpBytes2; ++I)
+          llvm::errs() << llvm::format_hex_no_prefix(
+                              (uint32_t)Bytes[PixelOffset + I], 2)
+                       << " ";
+        llvm::errs() << "\n";
+        if (ElemSize >= 4) {
+          float *F2 = reinterpret_cast<float *>(Bytes + PixelOffset);
+          const int FDump2 = std::min<int>(4, (int)(DumpBytes2 / 4));
+          llvm::errs() << "Row32 center floats: ";
+          for (int I = 0; I < FDump2; ++I)
+            llvm::errs() << F2[I] << " ";
+          llvm::errs() << "\n";
+        }
+      }
     }
     return llvm::Error::success();
   }
