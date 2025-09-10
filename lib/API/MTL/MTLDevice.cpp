@@ -102,21 +102,19 @@ class MTLDevice : public offloadtest::Device {
     MTL::VertexDescriptor *VertexDescriptor;
     llvm::SmallVector<MTL::Texture *> Textures;
     llvm::SmallVector<MTL::Buffer *> Buffers;
+    MTL::Texture *FrameBufferTexture = nullptr;
   };
 
   llvm::Error setupVertexShader(InvocationState &IS, const Pipeline &P) {
     if (P.Bindings.VertexBufferPtr) {
-      IS.VertexBuffer = Device->newBuffer(
-          P.Bindings.VertexBufferPtr->Data.back().get(),
-          P.Bindings.VertexBufferPtr->size(), MTL::ResourceStorageModeManaged);
-
+      const size_t ResourceCount = P.getDescriptorCount();
       IS.VertexDescriptor = MTL::VertexDescriptor::alloc()->init();
       const uint32_t Stride = P.Bindings.getVertexStride();
       for (size_t I = 0; I < P.Bindings.VertexAttributes.size(); ++I) {
         const VertexAttribute &VA = P.Bindings.VertexAttributes[I];
         MTL::VertexAttributeDescriptor *VADesc =
             MTL::VertexAttributeDescriptor::alloc()->init();
-        VADesc->setBufferIndex(0);
+        VADesc->setBufferIndex(ResourceCount);
         VADesc->setOffset(VA.Offset);
         VADesc->setFormat(getMTLVertexFormat(VA.Format, VA.Channels));
         IS.VertexDescriptor->attributes()->setObject(VADesc, I);
@@ -134,7 +132,7 @@ class MTLDevice : public offloadtest::Device {
 
   llvm::Error loadShaders(InvocationState &IS, const Pipeline &P) {
     NS::Error *Error = nullptr;
-    if (P.Shaders.size() == 1 && P.Shaders[0].Stage == Stages::Compute) {
+    if (P.isCompute()) {
       const llvm::StringRef Program = P.Shaders[0].Shader->getBuffer();
       dispatch_data_t Data = dispatch_data_create(
           Program.data(), Program.size(), dispatch_get_main_queue(),
@@ -186,6 +184,17 @@ class MTLDevice : public offloadtest::Device {
         if (Error)
           return toError(Error);
         IS.Pool->addObject(Fn);
+      }
+
+      // Make sure the pipeline color attachment format matches the intended
+      // render target so the pipeline is compiled with the correct format.
+      if (P.Bindings.RTargetBufferPtr) {
+        const MTL::PixelFormat PF =
+            getMTLFormat(P.Bindings.RTargetBufferPtr->Format,
+                         P.Bindings.RTargetBufferPtr->Channels);
+        auto *CADesc = Desc->colorAttachments()->object(0);
+        if (CADesc)
+          CADesc->setPixelFormat(PF);
       }
 
       IS.RenderPipeline = Device->newRenderPipelineState(Desc, &Error);
@@ -257,8 +266,10 @@ class MTLDevice : public offloadtest::Device {
   }
 
   llvm::Error createBuffers(Pipeline &P, InvocationState &IS) {
-    const size_t TableSize =
-        sizeof(IRDescriptorTableEntry) * P.getDescriptorCount();
+    const size_t GraphicsDescriptorCount = P.isGraphics() ? 1 : 0;
+    const size_t ResourceCount = P.getDescriptorCount();
+    const size_t TableSize = sizeof(IRDescriptorTableEntry) *
+                             (ResourceCount + GraphicsDescriptorCount);
     IS.ArgBuffer =
         Device->newBuffer(TableSize, MTL::ResourceStorageModeManaged);
 
@@ -268,6 +279,22 @@ class MTLDevice : public offloadtest::Device {
         if (auto Err = createDescriptor(R, IS, HeapIndex++))
           return Err;
       }
+    }
+    if (P.isGraphics()) {
+      IS.VertexBuffer = Device->newBuffer(
+          P.Bindings.VertexBufferPtr->Data.back().get(),
+          P.Bindings.VertexBufferPtr->size(), MTL::ResourceStorageModeManaged);
+      // Ensure GPU can see the CPU-initialized vertex data for managed buffers
+      IS.VertexBuffer->didModifyRange(
+          NS::Range::Make(0, IS.VertexBuffer->length()));
+
+      // Place the vertex buffer in the argument table after all other
+      // resources.
+      auto *TablePtr = (IRDescriptorTableEntry *)IS.ArgBuffer->contents();
+      IRBufferView View = {};
+      View.buffer = IS.VertexBuffer;
+      View.bufferSize = P.Bindings.VertexBufferPtr->size();
+      IRDescriptorTableSetBufferView(&TablePtr[ResourceCount], &View);
     }
     IS.ArgBuffer->didModifyRange(NS::Range::Make(0, IS.ArgBuffer->length()));
     return llvm::Error::success();
@@ -316,10 +343,17 @@ class MTLDevice : public offloadtest::Device {
       MTL::TextureDescriptor *TDesc =
           MTL::TextureDescriptor::texture2DDescriptor(Format, Width, Height,
                                                       false);
+      // Make this texture usable as a render target and shader resource. Use
+      // Shared storage so the CPU can read it after command buffer completion
+      // without an explicit blit/synchronization step on macOS.
+      TDesc->setUsage(MTL::TextureUsageRenderTarget |
+                      MTL::TextureUsageShaderRead |
+                      MTL::TextureUsageShaderWrite);
+      TDesc->setStorageMode(MTL::StorageModeShared);
 
-      MTL::Texture *NewTex = Device->newTexture(TDesc);
+      IS.FrameBufferTexture = Device->newTexture(TDesc);
       auto *CADesc = MTL::RenderPassColorAttachmentDescriptor::alloc()->init();
-      CADesc->setTexture(NewTex);
+      CADesc->setTexture(IS.FrameBufferTexture);
       CADesc->setLoadAction(MTL::LoadActionClear);
       CADesc->setClearColor(MTL::ClearColor());
       CADesc->setStoreAction(MTL::StoreActionStore);
@@ -327,13 +361,13 @@ class MTLDevice : public offloadtest::Device {
 
       MTL::RenderCommandEncoder *CmdEncoder =
           CmdBuffer->renderCommandEncoder(Desc);
-      CmdEncoder->setVertexBuffer(IS.VertexBuffer, 0, 0);
-      CmdEncoder->setVertexBytes(RTarget->Data[0].get(), RTarget->size(), 0);
+
+      CmdEncoder->setRenderPipelineState(IS.RenderPipeline);
       CmdEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0),
                                  P.Bindings.getVertexCount());
 
-      // CmdEncoder->memoryBarrier(MTL::BarrierScopeBuffers,
-      // MTL::RenderStageFragment, 0);
+      CmdEncoder->memoryBarrier(MTL::BarrierScopeBuffers,
+                                MTL::RenderStageFragment, 0);
       CmdEncoder->endEncoding();
     }
 
@@ -370,6 +404,14 @@ class MTLDevice : public offloadtest::Device {
             R.BufferPtr->Data.back().get(), Width * R.getElementSize(),
             MTL::Region(0, 0, Width, Height), 0);
       }
+    }
+    if (P.isGraphics()) {
+      Buffer *RTarget = P.Bindings.RTargetBufferPtr;
+      const uint64_t Width = RTarget->OutputProps.Width;
+      const uint64_t Height = RTarget->OutputProps.Height;
+      IS.FrameBufferTexture->getBytes(RTarget->Data[0].get(),
+                                      Width * RTarget->getElementSize(),
+                                      MTL::Region(0, 0, Width, Height), 0);
     }
     return llvm::Error::success();
   }
