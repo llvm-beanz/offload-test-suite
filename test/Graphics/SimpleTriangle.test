@@ -55,9 +55,11 @@ Bindings:
     - Format: Float32
       Channels: 3
       Offset: 0
+      Name: POSITION
     - Format: Float32
       Channels: 4
       Offset: 12
+      Name: COLOR
   RenderTarget: Output
 DescriptorSets: []
 ...

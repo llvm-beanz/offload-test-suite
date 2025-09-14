@@ -271,6 +271,11 @@ private:
 #else // WSL
     int Event;
 #endif
+
+    // Resources for graphics pipelines.
+    ComPtr<ID3D12Resource> RT;
+    ComPtr<ID3D12Resource> RTReadback;
+
     llvm::SmallVector<DescriptorTable> DescTables;
     llvm::SmallVector<ResourcePair> RootResources;
   };
@@ -1109,18 +1114,16 @@ public:
     return llvm::Error::success();
   }
 
-  // --- Graphics helpers (minimal) ---
   llvm::Error
-  createRenderTargetForPipeline(Pipeline &P, ComPtr<ID3D12Resource> &OutRT,
-                                ComPtr<ID3D12Resource> &OutReadback) {
-    llvm::outs() << "[DX] createRenderTargetForPipeline()\n";
+  createRenderTargetForPipeline(Pipeline &P, InvocationState &IS) {
     if (!P.Bindings.RTargetBufferPtr)
-      return llvm::createStringError(std::errc::invalid_argument,
-                                     "No render target bound for graphics.");
-    const auto &OutBuf = *P.Bindings.RTargetBufferPtr;
-    llvm::outs() << "[DX] Render target size: " << OutBuf.OutputProps.Width
-                 << "x" << OutBuf.OutputProps.Height
-                 << " bytes=" << OutBuf.size() << "\n";
+      return llvm::createStringError(
+          std::errc::invalid_argument,
+          "No render target bound for graphics pipeline.");
+    const Buffer &OutBuf = *P.Bindings.RTargetBufferPtr;
+    llvm::outs() << "Render target size: " << OutBuf.OutputProps.Width << "x"
+                 << OutBuf.OutputProps.Height << " bytes=" << OutBuf.size()
+                 << "\n";
     D3D12_RESOURCE_DESC Desc = {};
     Desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
     Desc.Width = OutBuf.OutputProps.Width;
@@ -1139,30 +1142,27 @@ public:
     ClearValue.Color[2] = 0.0f;
     ClearValue.Color[3] = 0.0f;
 
-    auto HeapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+    CD3DX12_HEAP_PROPERTIES HeapProps =
+        CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
     if (auto Err = HR::toError(Device->CreateCommittedResource(
                                    &HeapProps, D3D12_HEAP_FLAG_NONE, &Desc,
                                    D3D12_RESOURCE_STATE_RENDER_TARGET,
-                                   &ClearValue, IID_PPV_ARGS(&OutRT)),
+                                   &ClearValue, IID_PPV_ARGS(&IS.RT)),
                                "Failed to create render target"))
       return Err;
 
-    llvm::outs() << "[DX] Created render target resource\n";
-
-    // Create readback buffer sized for the pixel data (raw bytes)
+    // Create readback buffer sized for the pixel data (raw bytes).
     const uint64_t RBSize = static_cast<uint64_t>(OutBuf.size());
     D3D12_RESOURCE_DESC const RbDesc = CD3DX12_RESOURCE_DESC::Buffer(RBSize);
-    auto RbHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);
+    CD3DX12_HEAP_PROPERTIES RbHeap =
+        CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);
     if (auto Err =
             HR::toError(Device->CreateCommittedResource(
                             &RbHeap, D3D12_HEAP_FLAG_NONE, &RbDesc,
                             D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
-                            IID_PPV_ARGS(&OutReadback)),
+                            IID_PPV_ARGS(&IS.RTReadback)),
                         "Failed to create render target readback buffer"))
       return Err;
-
-    llvm::outs() << "[DX] Created render target readback buffer size=" << RBSize
-                 << "\n";
 
     return llvm::Error::success();
   }
@@ -1170,16 +1170,17 @@ public:
   llvm::Error
   createVertexBufferForPipeline(Pipeline &P, ComPtr<ID3D12Resource> &OutVB,
                                 D3D12_VERTEX_BUFFER_VIEW &OutVBView) {
-    llvm::outs() << "[DX] createVertexBufferForPipeline()\n";
     if (!P.Bindings.VertexBufferPtr)
-      return llvm::createStringError(std::errc::invalid_argument,
-                                     "No vertex buffer bound for graphics.");
-    const auto &VB = *P.Bindings.VertexBufferPtr;
+      return llvm::createStringError(
+          std::errc::invalid_argument,
+          "No vertex buffer bound for graphics pipeline.");
+    const Buffer &VB = *P.Bindings.VertexBufferPtr;
     const uint64_t VBSize = VB.size();
-    llvm::outs() << "[DX] Vertex buffer size=" << VBSize
+    llvm::outs() << "Vertex buffer size=" << VBSize
                  << " arrays=" << VB.ArraySize << "\n";
     D3D12_RESOURCE_DESC const Desc = CD3DX12_RESOURCE_DESC::Buffer(VBSize);
-    auto HeapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+    CD3DX12_HEAP_PROPERTIES HeapProps =
+        CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
     if (auto Err = HR::toError(Device->CreateCommittedResource(
                                    &HeapProps, D3D12_HEAP_FLAG_NONE, &Desc,
                                    D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
@@ -1198,20 +1199,15 @@ public:
     OutVBView.SizeInBytes = static_cast<UINT>(VBSize);
     OutVBView.StrideInBytes = P.Bindings.getVertexStride();
 
-    llvm::outs() << "[DX] Vertex buffer uploaded GPUAddr="
-                 << OutVBView.BufferLocation
-                 << " stride=" << OutVBView.StrideInBytes << "\n";
     return llvm::Error::success();
   }
 
-  llvm::Error createGraphicsPSOFromDXIL(Pipeline &P, InvocationState &IS,
-                                        ComPtr<ID3D12PipelineState> &OutPSO) {
-    llvm::outs() << "[DX] createGraphicsPSOFromDXIL()\n";
-    // Build a minimal input layout from vertex attributes
+  llvm::Error createGraphicsPSOFromDXIL(Pipeline &P, InvocationState &IS) {
+    // Create the input layout based on the vertex attributes. 
     std::vector<D3D12_INPUT_ELEMENT_DESC> InputLayout;
     for (size_t I = 0; I < P.Bindings.VertexAttributes.size(); ++I) {
-      const auto &Attr = P.Bindings.VertexAttributes[I];
-      InputLayout.push_back({I == 0 ? "POSITION" : "COLOR", 0,
+      const VertexAttribute &Attr = P.Bindings.VertexAttributes[I];
+      InputLayout.push_back({Attr.Name.c_str(), 0,
                              getDXFormat(Attr.Format, Attr.Channels), 0,
                              static_cast<UINT>(Attr.Offset),
                              D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0});
@@ -1220,17 +1216,29 @@ public:
     D3D12_GRAPHICS_PIPELINE_STATE_DESC PsoDesc = {};
     PsoDesc.InputLayout = {InputLayout.data(), (UINT)InputLayout.size()};
     PsoDesc.pRootSignature = IS.RootSig.Get();
-    // Assume shader[0] = VS, shader[1] = PS
-    if (P.Shaders.size() < 2)
+
+    for (auto &S : P.Shaders) {
+      switch (S.Stage) {
+      case Stages::Vertex:
+        PsoDesc.VS = {S.Shader->getBuffer().data(),
+                      S.Shader->getBuffer().size()};
+        break;
+      case Stages::Pixel:
+        PsoDesc.PS = {S.Shader->getBuffer().data(),
+                      S.Shader->getBuffer().size()};
+        break;
+      default:
+        return llvm::createStringError(
+            std::errc::invalid_argument,
+            "Unsupported shader type in graphics pipeline.");
+      }
+    }
+
+    // TODO: Add support for more shader stages and different pipeline shapes.
+    if (PsoDesc.VS.BytecodeLength == 0 || PsoDesc.PS.BytecodeLength == 0)
       return llvm::createStringError(std::errc::invalid_argument,
                                      "Graphics pipeline requires VS and PS.");
-    llvm::outs() << "[DX] VS size=" << P.Shaders[0].Shader->getBuffer().size()
-                 << " PS size=" << P.Shaders[1].Shader->getBuffer().size()
-                 << "\n";
-    PsoDesc.VS = {P.Shaders[0].Shader->getBuffer().data(),
-                  P.Shaders[0].Shader->getBuffer().size()};
-    PsoDesc.PS = {P.Shaders[1].Shader->getBuffer().data(),
-                  P.Shaders[1].Shader->getBuffer().size()};
+
     PsoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
     PsoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
     PsoDesc.DepthStencilState.DepthEnable = FALSE;
@@ -1243,33 +1251,25 @@ public:
     PsoDesc.SampleDesc.Count = 1;
 
     if (auto Err = HR::toError(Device->CreateGraphicsPipelineState(
-                                   &PsoDesc, IID_PPV_ARGS(&OutPSO)),
-                               "Failed to create graphics PSO"))
+                                   &PsoDesc, IID_PPV_ARGS(&IS.PSO)),
+                               "Failed to create graphics PSO."))
       return Err;
 
-    llvm::outs() << "[DX] Created graphics PSO\n";
     return llvm::Error::success();
   }
 
   llvm::Error executeGraphics(Pipeline &P, InvocationState &IS) {
-    llvm::outs() << "[DX] executeGraphics() - begin\n";
-    // Create RT, readback and vertex buffer and PSO
-    ComPtr<ID3D12Resource> RT;
-    ComPtr<ID3D12Resource> RTReadback;
-    if (auto Err = createRenderTargetForPipeline(P, RT, RTReadback))
+    // Create render target, readback and vertex buffer and PSO.
+    if (auto Err = createRenderTargetForPipeline(P, IS))
       return Err;
-    llvm::outs() << "[DX] executeGraphics() - render target ready\n";
 
     ComPtr<ID3D12Resource> VB;
     D3D12_VERTEX_BUFFER_VIEW VBView = {};
     if (auto Err = createVertexBufferForPipeline(P, VB, VBView))
       return Err;
-    llvm::outs() << "[DX] executeGraphics() - vertex buffer ready\n";
 
-    ComPtr<ID3D12PipelineState> GsPSO;
-    if (auto Err = createGraphicsPSOFromDXIL(P, IS, GsPSO))
+    if (auto Err = createGraphicsPSOFromDXIL(P, IS))
       return Err;
-    llvm::outs() << "[DX] executeGraphics() - PSO ready\n";
 
     // Create RTV descriptor heap for this render target
     D3D12_DESCRIPTOR_HEAP_DESC RtvHeapDesc = {};
@@ -1281,12 +1281,12 @@ public:
             Device->CreateDescriptorHeap(&RtvHeapDesc, IID_PPV_ARGS(&RTVHeap)),
             "Failed to create RTV heap"))
       return Err;
-    D3D12_CPU_DESCRIPTOR_HANDLE const RtvHandle =
+    const D3D12_CPU_DESCRIPTOR_HANDLE RtvHandle =
         RTVHeap->GetCPUDescriptorHandleForHeapStart();
-    Device->CreateRenderTargetView(RT.Get(), nullptr, RtvHandle);
+    Device->CreateRenderTargetView(IS.RT.Get(), nullptr, RtvHandle);
 
     // Record commands
-    IS.CmdList->SetPipelineState(GsPSO.Get());
+    IS.CmdList->SetPipelineState(IS.PSO.Get());
     IS.CmdList->SetGraphicsRootSignature(IS.RootSig.Get());
 
     IS.CmdList->OMSetRenderTargets(1, &RtvHandle, FALSE, nullptr);
@@ -1301,7 +1301,7 @@ public:
     Vp.TopLeftX = 0.0f;
     Vp.TopLeftY = 0.0f;
     IS.CmdList->RSSetViewports(1, &Vp);
-    D3D12_RECT const Scissor = {0, 0, static_cast<LONG>(Vp.Width),
+    const D3D12_RECT Scissor = {0, 0, static_cast<LONG>(Vp.Width),
                                 static_cast<LONG>(Vp.Height)};
     IS.CmdList->RSSetScissorRects(1, &Scissor);
 
@@ -1315,28 +1315,25 @@ public:
           0, IS.DescHeap->GetGPUDescriptorHandleForHeapStart());
     }
 
-    llvm::outs() << "[DX] About to issue DrawInstanced(6)\n";
     IS.CmdList->DrawInstanced(P.Bindings.getVertexCount(), 1, 0, 0);
-    llvm::outs() << "[DX] DrawInstanced issued\n";
 
     // Transition RT to copy source and copy to readback
     const D3D12_RESOURCE_BARRIER Barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-        RT.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
+        IS.RT.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
         D3D12_RESOURCE_STATE_COPY_SOURCE);
     IS.CmdList->ResourceBarrier(1, &Barrier);
 
     // Copy texture to buffer: use placed footprint
-    const offloadtest::Buffer &B = *P.Bindings.RTargetBufferPtr;
+    const Buffer &B = *P.Bindings.RTargetBufferPtr;
     const D3D12_PLACED_SUBRESOURCE_FOOTPRINT Footprint{
         0,
         CD3DX12_SUBRESOURCE_FOOTPRINT(
             getDXFormat(B.Format, B.Channels), B.OutputProps.Width,
             B.OutputProps.Height, 1, B.OutputProps.Width * B.getElementSize())};
-    const CD3DX12_TEXTURE_COPY_LOCATION DstLoc(RTReadback.Get(), Footprint);
-    const CD3DX12_TEXTURE_COPY_LOCATION SrcLoc(RT.Get(), 0);
+    const CD3DX12_TEXTURE_COPY_LOCATION DstLoc(IS.RTReadback.Get(), Footprint);
+    const CD3DX12_TEXTURE_COPY_LOCATION SrcLoc(IS.RT.Get(), 0);
 
     IS.CmdList->CopyTextureRegion(&DstLoc, 0, 0, 0, &SrcLoc, nullptr);
-    llvm::outs() << "[DX] CopyTextureRegion recorded\n";
 
     // Execute and wait
     if (auto Err = executeCommandList(IS))
@@ -1346,13 +1343,13 @@ public:
     // flipping vertical orientation (render target top-left -> test expects
     // bottom-left).
     void *Mapped = nullptr;
-    if (auto Err = HR::toError(RTReadback->Map(0, nullptr, &Mapped),
+    if (auto Err = HR::toError(IS.RTReadback->Map(0, nullptr, &Mapped),
                                "Failed to map render target readback"))
       return Err;
 
     // Query the copy footprint to get the actual padded row pitch used by the
     // copy operation.
-    D3D12_RESOURCE_DESC const RTDesc = RT->GetDesc();
+    const D3D12_RESOURCE_DESC RTDesc = IS.RT->GetDesc();
     D3D12_PLACED_SUBRESOURCE_FOOTPRINT Placed = {};
     UINT NumRows = 0;
     UINT64 RowSizeInBytes = 0;
@@ -1377,9 +1374,9 @@ public:
       memcpy(DstRow, SrcRow, RowBytes);
     }
 
-    RTReadback->Unmap(0, nullptr);
+    IS.RTReadback->Unmap(0, nullptr);
 
-    llvm::outs() << "[DX] executeGraphics() - finished, copied "
+    llvm::outs() << "executeGraphics() - finished, copied "
                  << P.Bindings.RTargetBufferPtr->size() << " bytes\n";
     return llvm::Error::success();
   }

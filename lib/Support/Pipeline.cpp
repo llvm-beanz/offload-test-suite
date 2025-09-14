@@ -289,9 +289,10 @@ void MappingTraits<offloadtest::VulkanBinding>::mapping(
 
 void MappingTraits<offloadtest::VertexAttribute>::mapping(
     IO &I, offloadtest::VertexAttribute &A) {
-  I.mapOptional("Format", A.Format);
-  I.mapOptional("Channels", A.Channels);
-  I.mapOptional("Offset", A.Offset);
+  I.mapRequired("Format", A.Format);
+  I.mapRequired("Channels", A.Channels);
+  I.mapRequired("Offset", A.Offset);
+  I.mapRequired("Name", A.Name);
 }
 
 void MappingTraits<offloadtest::IOBindings>::mapping(

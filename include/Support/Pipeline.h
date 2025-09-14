@@ -262,6 +262,7 @@ struct VertexAttribute {
   DataFormat Format;
   int Channels;
   int Offset;
+  std::string Name;
 
   uint32_t size() const {
     return getFormatSize(Format) * Channels;
