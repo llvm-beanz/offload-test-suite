@@ -275,6 +275,8 @@ private:
     // Resources for graphics pipelines.
     ComPtr<ID3D12Resource> RT;
     ComPtr<ID3D12Resource> RTReadback;
+    ComPtr<ID3D12DescriptorHeap> RTVHeap;
+    ComPtr<ID3D12Resource> VB;
 
     llvm::SmallVector<DescriptorTable> DescTables;
     llvm::SmallVector<ResourcePair> RootResources;
@@ -460,7 +462,7 @@ public:
     return llvm::Error::success();
   }
 
-  llvm::Error createPSO(llvm::StringRef DXIL, InvocationState &State) {
+  llvm::Error createComputePSO(llvm::StringRef DXIL, InvocationState &State) {
     const D3D12_COMPUTE_PIPELINE_STATE_DESC Desc = {
         State.RootSig.Get(),
         {DXIL.data(), DXIL.size()},
@@ -1074,7 +1076,7 @@ public:
     return llvm::Error::success();
   }
 
-  llvm::Error readBack(InvocationState &IS) {
+  llvm::Error readBack(Pipeline &P, InvocationState &IS) {
     auto MemCpyBack = [](ResourcePair &R) -> llvm::Error {
       if (!R.first->isReadWrite())
         return llvm::Error::success();
@@ -1111,11 +1113,52 @@ public:
     for (auto &R : IS.RootResources)
       if (auto Err = MemCpyBack(R))
         return Err;
+
+    // If there is no render target, return early.
+    if (IS.RTReadback == nullptr)
+      return llvm::Error::success();
+
+    // Map readback and copy into host buffer, accounting for row pitch and
+    // flipping vertical orientation (render target top-left -> test expects
+    // bottom-left).
+    const Buffer &B = *P.Bindings.RTargetBufferPtr;
+    void *Mapped = nullptr;
+    if (auto Err = HR::toError(IS.RTReadback->Map(0, nullptr, &Mapped),
+                               "Failed to map render target readback"))
+      return Err;
+
+    // Query the copy footprint to get the actual padded row pitch used by the
+    // copy operation.
+    const D3D12_RESOURCE_DESC RTDesc = IS.RT->GetDesc();
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT Placed = {};
+    UINT NumRows = 0;
+    UINT64 RowSizeInBytes = 0;
+    UINT64 TotalBytes = 0;
+    Device->GetCopyableFootprints(&RTDesc, 0u, 1u, 0u, &Placed, &NumRows,
+                                  &RowSizeInBytes, &TotalBytes);
+
+    const uint32_t RowPitch = Placed.Footprint.RowPitch;
+    const uint32_t RowBytes =
+        static_cast<uint32_t>(B.getElementSize() * B.OutputProps.Width);
+    const uint32_t Height = static_cast<uint32_t>(B.OutputProps.Height);
+
+    uint8_t *SrcBase = reinterpret_cast<uint8_t *>(Mapped);
+    uint8_t *DstBase =
+        reinterpret_cast<uint8_t *>(P.Bindings.RTargetBufferPtr->Data[0].get());
+
+    // Copy rows; reverse vertically so output is oriented as the test expects.
+    for (uint32_t Y = 0; Y < Height; ++Y) {
+      uint8_t *SrcRow = SrcBase + static_cast<size_t>(Y) * RowPitch;
+      uint8_t *DstRow =
+          DstBase + static_cast<size_t>(Height - 1 - Y) * RowBytes;
+      memcpy(DstRow, SrcRow, RowBytes);
+    }
+
+    IS.RTReadback->Unmap(0, nullptr);
     return llvm::Error::success();
   }
 
-  llvm::Error
-  createRenderTargetForPipeline(Pipeline &P, InvocationState &IS) {
+  llvm::Error createRenderTarget(Pipeline &P, InvocationState &IS) {
     if (!P.Bindings.RTargetBufferPtr)
       return llvm::createStringError(
           std::errc::invalid_argument,
@@ -1167,9 +1210,7 @@ public:
     return llvm::Error::success();
   }
 
-  llvm::Error
-  createVertexBufferForPipeline(Pipeline &P, ComPtr<ID3D12Resource> &OutVB,
-                                D3D12_VERTEX_BUFFER_VIEW &OutVBView) {
+  llvm::Error createVertexBuffer(Pipeline &P, InvocationState &IS) {
     if (!P.Bindings.VertexBufferPtr)
       return llvm::createStringError(
           std::errc::invalid_argument,
@@ -1184,26 +1225,30 @@ public:
     if (auto Err = HR::toError(Device->CreateCommittedResource(
                                    &HeapProps, D3D12_HEAP_FLAG_NONE, &Desc,
                                    D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                   IID_PPV_ARGS(&OutVB)),
+                                   IID_PPV_ARGS(&IS.VB)),
                                "Failed to create vertex buffer"))
       return Err;
 
     void *Ptr = nullptr;
-    if (auto Err = HR::toError(OutVB->Map(0, nullptr, &Ptr),
+    if (auto Err = HR::toError(IS.VB->Map(0, nullptr, &Ptr),
                                "Failed to map vertex buffer"))
       return Err;
     memcpy(Ptr, VB.Data[0].get(), VBSize);
-    OutVB->Unmap(0, nullptr);
+    IS.VB->Unmap(0, nullptr);
 
-    OutVBView.BufferLocation = OutVB->GetGPUVirtualAddress();
-    OutVBView.SizeInBytes = static_cast<UINT>(VBSize);
-    OutVBView.StrideInBytes = P.Bindings.getVertexStride();
+    D3D12_VERTEX_BUFFER_VIEW VBView = {};
+    VBView.BufferLocation = IS.VB->GetGPUVirtualAddress();
+    VBView.SizeInBytes = static_cast<UINT>(VBSize);
+    VBView.StrideInBytes = P.Bindings.getVertexStride();
+
+    IS.CmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    IS.CmdList->IASetVertexBuffers(0, 1, &VBView);
 
     return llvm::Error::success();
   }
 
-  llvm::Error createGraphicsPSOFromDXIL(Pipeline &P, InvocationState &IS) {
-    // Create the input layout based on the vertex attributes. 
+  llvm::Error createGraphicsPSO(Pipeline &P, InvocationState &IS) {
+    // Create the input layout based on the vertex attributes.
     std::vector<D3D12_INPUT_ELEMENT_DESC> InputLayout;
     for (size_t I = 0; I < P.Bindings.VertexAttributes.size(); ++I) {
       const VertexAttribute &Attr = P.Bindings.VertexAttributes[I];
@@ -1213,18 +1258,18 @@ public:
                              D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0});
     }
 
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC PsoDesc = {};
-    PsoDesc.InputLayout = {InputLayout.data(), (UINT)InputLayout.size()};
-    PsoDesc.pRootSignature = IS.RootSig.Get();
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC PSODesc = {};
+    PSODesc.InputLayout = {InputLayout.data(), (UINT)InputLayout.size()};
+    PSODesc.pRootSignature = IS.RootSig.Get();
 
     for (auto &S : P.Shaders) {
       switch (S.Stage) {
       case Stages::Vertex:
-        PsoDesc.VS = {S.Shader->getBuffer().data(),
+        PSODesc.VS = {S.Shader->getBuffer().data(),
                       S.Shader->getBuffer().size()};
         break;
       case Stages::Pixel:
-        PsoDesc.PS = {S.Shader->getBuffer().data(),
+        PSODesc.PS = {S.Shader->getBuffer().data(),
                       S.Shader->getBuffer().size()};
         break;
       default:
@@ -1235,78 +1280,63 @@ public:
     }
 
     // TODO: Add support for more shader stages and different pipeline shapes.
-    if (PsoDesc.VS.BytecodeLength == 0 || PsoDesc.PS.BytecodeLength == 0)
+    if (PSODesc.VS.BytecodeLength == 0 || PSODesc.PS.BytecodeLength == 0)
       return llvm::createStringError(std::errc::invalid_argument,
                                      "Graphics pipeline requires VS and PS.");
 
-    PsoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-    PsoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-    PsoDesc.DepthStencilState.DepthEnable = FALSE;
-    PsoDesc.DepthStencilState.StencilEnable = FALSE;
-    PsoDesc.SampleMask = UINT_MAX;
-    PsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-    PsoDesc.NumRenderTargets = 1;
-    PsoDesc.RTVFormats[0] = getDXFormat(P.Bindings.RTargetBufferPtr->Format,
+    PSODesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+    PSODesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+    PSODesc.DepthStencilState.DepthEnable = false;
+    PSODesc.DepthStencilState.StencilEnable = false;
+    PSODesc.SampleMask = UINT_MAX;
+    PSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    PSODesc.NumRenderTargets = 1;
+    PSODesc.RTVFormats[0] = getDXFormat(P.Bindings.RTargetBufferPtr->Format,
                                         P.Bindings.RTargetBufferPtr->Channels);
-    PsoDesc.SampleDesc.Count = 1;
+    PSODesc.SampleDesc.Count = 1;
 
     if (auto Err = HR::toError(Device->CreateGraphicsPipelineState(
-                                   &PsoDesc, IID_PPV_ARGS(&IS.PSO)),
+                                   &PSODesc, IID_PPV_ARGS(&IS.PSO)),
                                "Failed to create graphics PSO."))
       return Err;
 
     return llvm::Error::success();
   }
 
-  llvm::Error executeGraphics(Pipeline &P, InvocationState &IS) {
-    // Create render target, readback and vertex buffer and PSO.
-    if (auto Err = createRenderTargetForPipeline(P, IS))
+  llvm::Error createGraphicsCommands(Pipeline &P, InvocationState &IS) {
+    // Create descriptor heap for the render target view. We do this later and
+    // separately from other descriptors just as a convenience since we need the
+    // descriptor handle to bind the render target.
+    D3D12_DESCRIPTOR_HEAP_DESC RTVHeapDesc = {};
+    RTVHeapDesc.NumDescriptors = 1;
+    RTVHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+    RTVHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+    if (auto Err = HR::toError(Device->CreateDescriptorHeap(
+                                   &RTVHeapDesc, IID_PPV_ARGS(&IS.RTVHeap)),
+                               "Failed to create RTV heap"))
       return Err;
+    const D3D12_CPU_DESCRIPTOR_HANDLE RTVHandle =
+        IS.RTVHeap->GetCPUDescriptorHandleForHeapStart();
+    Device->CreateRenderTargetView(IS.RT.Get(), nullptr, RTVHandle);
 
-    ComPtr<ID3D12Resource> VB;
-    D3D12_VERTEX_BUFFER_VIEW VBView = {};
-    if (auto Err = createVertexBufferForPipeline(P, VB, VBView))
-      return Err;
-
-    if (auto Err = createGraphicsPSOFromDXIL(P, IS))
-      return Err;
-
-    // Create RTV descriptor heap for this render target
-    D3D12_DESCRIPTOR_HEAP_DESC RtvHeapDesc = {};
-    RtvHeapDesc.NumDescriptors = 1;
-    RtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-    RtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-    ComPtr<ID3D12DescriptorHeap> RTVHeap;
-    if (auto Err = HR::toError(
-            Device->CreateDescriptorHeap(&RtvHeapDesc, IID_PPV_ARGS(&RTVHeap)),
-            "Failed to create RTV heap"))
-      return Err;
-    const D3D12_CPU_DESCRIPTOR_HANDLE RtvHandle =
-        RTVHeap->GetCPUDescriptorHandleForHeapStart();
-    Device->CreateRenderTargetView(IS.RT.Get(), nullptr, RtvHandle);
-
-    // Record commands
     IS.CmdList->SetPipelineState(IS.PSO.Get());
     IS.CmdList->SetGraphicsRootSignature(IS.RootSig.Get());
 
-    IS.CmdList->OMSetRenderTargets(1, &RtvHandle, FALSE, nullptr);
+    IS.CmdList->OMSetRenderTargets(1, &RTVHandle, false, nullptr);
 
-    D3D12_VIEWPORT Vp = {};
-    Vp.Width =
+    D3D12_VIEWPORT VP = {};
+    VP.Width =
         static_cast<FLOAT>(P.Bindings.RTargetBufferPtr->OutputProps.Width);
-    Vp.Height =
+    VP.Height =
         static_cast<FLOAT>(P.Bindings.RTargetBufferPtr->OutputProps.Height);
-    Vp.MinDepth = 0.0f;
-    Vp.MaxDepth = 1.0f;
-    Vp.TopLeftX = 0.0f;
-    Vp.TopLeftY = 0.0f;
-    IS.CmdList->RSSetViewports(1, &Vp);
-    const D3D12_RECT Scissor = {0, 0, static_cast<LONG>(Vp.Width),
-                                static_cast<LONG>(Vp.Height)};
+    VP.MinDepth = 0.0f;
+    VP.MaxDepth = 1.0f;
+    VP.TopLeftX = 0.0f;
+    VP.TopLeftY = 0.0f;
+    IS.CmdList->RSSetViewports(1, &VP);
+    const D3D12_RECT Scissor = {0, 0, static_cast<LONG>(VP.Width),
+                                static_cast<LONG>(VP.Height)};
     IS.CmdList->RSSetScissorRects(1, &Scissor);
-
-    IS.CmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    IS.CmdList->IASetVertexBuffers(0, 1, &VBView);
 
     if (IS.DescHeap) {
       ID3D12DescriptorHeap *const Heaps[] = {IS.DescHeap.Get()};
@@ -1317,13 +1347,12 @@ public:
 
     IS.CmdList->DrawInstanced(P.Bindings.getVertexCount(), 1, 0, 0);
 
-    // Transition RT to copy source and copy to readback
+    // Transition the render target to copy source and copy to the readback buffer.
     const D3D12_RESOURCE_BARRIER Barrier = CD3DX12_RESOURCE_BARRIER::Transition(
         IS.RT.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
         D3D12_RESOURCE_STATE_COPY_SOURCE);
     IS.CmdList->ResourceBarrier(1, &Barrier);
 
-    // Copy texture to buffer: use placed footprint
     const Buffer &B = *P.Bindings.RTargetBufferPtr;
     const D3D12_PLACED_SUBRESOURCE_FOOTPRINT Footprint{
         0,
@@ -1334,50 +1363,6 @@ public:
     const CD3DX12_TEXTURE_COPY_LOCATION SrcLoc(IS.RT.Get(), 0);
 
     IS.CmdList->CopyTextureRegion(&DstLoc, 0, 0, 0, &SrcLoc, nullptr);
-
-    // Execute and wait
-    if (auto Err = executeCommandList(IS))
-      return Err;
-
-    // Map readback and copy into host buffer, accounting for row pitch and
-    // flipping vertical orientation (render target top-left -> test expects
-    // bottom-left).
-    void *Mapped = nullptr;
-    if (auto Err = HR::toError(IS.RTReadback->Map(0, nullptr, &Mapped),
-                               "Failed to map render target readback"))
-      return Err;
-
-    // Query the copy footprint to get the actual padded row pitch used by the
-    // copy operation.
-    const D3D12_RESOURCE_DESC RTDesc = IS.RT->GetDesc();
-    D3D12_PLACED_SUBRESOURCE_FOOTPRINT Placed = {};
-    UINT NumRows = 0;
-    UINT64 RowSizeInBytes = 0;
-    UINT64 TotalBytes = 0;
-    Device->GetCopyableFootprints(&RTDesc, 0u, 1u, 0u, &Placed, &NumRows,
-                                  &RowSizeInBytes, &TotalBytes);
-
-    const uint32_t RowPitch = Placed.Footprint.RowPitch;
-    const uint32_t RowBytes =
-        static_cast<uint32_t>(B.getElementSize() * B.OutputProps.Width);
-    const uint32_t Height = static_cast<uint32_t>(B.OutputProps.Height);
-
-    uint8_t *SrcBase = reinterpret_cast<uint8_t *>(Mapped);
-    uint8_t *DstBase =
-        reinterpret_cast<uint8_t *>(P.Bindings.RTargetBufferPtr->Data[0].get());
-
-    // Copy rows; reverse vertically so output is oriented as the test expects.
-    for (uint32_t Y = 0; Y < Height; ++Y) {
-      uint8_t *SrcRow = SrcBase + static_cast<size_t>(Y) * RowPitch;
-      uint8_t *DstRow =
-          DstBase + static_cast<size_t>(Height - 1 - Y) * RowBytes;
-      memcpy(DstRow, SrcRow, RowBytes);
-    }
-
-    IS.RTReadback->Unmap(0, nullptr);
-
-    llvm::outs() << "executeGraphics() - finished, copied "
-                 << P.Bindings.RTargetBufferPtr->size() << " bytes\n";
     return llvm::Error::success();
   }
 
@@ -1418,11 +1403,6 @@ public:
       return Err;
     llvm::outs() << "Descriptor heap created.\n";
 
-    if (P.isCompute()) {
-      if (auto Err = createPSO(P.Shaders[0].Shader->getBuffer(), State))
-        return Err;
-      llvm::outs() << "PSO created.\n";
-    }
     if (auto Err = createCommandStructures(State))
       return Err;
     llvm::outs() << "Command structures created.\n";
@@ -1434,18 +1414,38 @@ public:
     llvm::outs() << "Event prepared.\n";
 
     if (P.isCompute()) {
+      // This is an arbitrary distinction that we could alter in the future.
+      if (P.Shaders.size() != 1 || P.Shaders[0].Stage != Stages::Compute)
+        return llvm::createStringError(
+            std::errc::invalid_argument,
+            "Compute pipeline must have exactly one compute shader.");
+      if (auto Err = createComputePSO(P.Shaders[0].Shader->getBuffer(), State))
+        return Err;
+      llvm::outs() << "PSO created.\n";
       if (auto Err = createComputeCommands(P, State))
         return Err;
       llvm::outs() << "Compute command list created.\n";
-      if (auto Err = executeCommandList(State))
-        return Err;
+
     } else {
-      if (auto Err = executeGraphics(P, State))
+      // Create render target, readback and vertex buffer and PSO.
+      if (auto Err = createRenderTarget(P, State))
         return Err;
-      llvm::outs() << "Graphics execution complete.\n";
+      llvm::outs() << "Render target created.\n";
+      if (auto Err = createVertexBuffer(P, State))
+        return Err;
+      llvm::outs() << "Vertex buffer created.\n";
+      if (auto Err = createGraphicsPSO(P, State))
+        return Err;
+      llvm::outs() << "Graphics PSO created.\n";
+      if (auto Err = createGraphicsCommands(P, State))
+        return Err;
+      llvm::outs() << "Graphics command list created complete.\n";
     }
+
+    if (auto Err = executeCommandList(State))
+      return Err;
     llvm::outs() << "Compute commands executed.\n";
-    if (auto Err = readBack(State))
+    if (auto Err = readBack(P, State))
       return Err;
     llvm::outs() << "Read data back.\n";
 
