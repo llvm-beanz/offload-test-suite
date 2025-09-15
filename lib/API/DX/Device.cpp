@@ -1282,7 +1282,8 @@ public:
     // TODO: Add support for more shader stages and different pipeline shapes.
     if (PSODesc.VS.BytecodeLength == 0 || PSODesc.PS.BytecodeLength == 0)
       return llvm::createStringError(std::errc::invalid_argument,
-                                     "Graphics pipeline requires VS and PS.");
+                                     "Graphics pipeline requires both a vertex "
+                                     "shader and a pixel shader.");
 
     PSODesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
     PSODesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
@@ -1347,7 +1348,8 @@ public:
 
     IS.CmdList->DrawInstanced(P.Bindings.getVertexCount(), 1, 0, 0);
 
-    // Transition the render target to copy source and copy to the readback buffer.
+    // Transition the render target to copy source and copy to the readback
+    // buffer.
     const D3D12_RESOURCE_BARRIER Barrier = CD3DX12_RESOURCE_BARRIER::Transition(
         IS.RT.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
         D3D12_RESOURCE_STATE_COPY_SOURCE);
