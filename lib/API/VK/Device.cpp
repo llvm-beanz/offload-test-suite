@@ -268,7 +268,7 @@ private:
     VkCommandPool CmdPool;
     VkCommandBuffer CmdBuffer;
     VkPipelineLayout PipelineLayout;
-    VkDescriptorPool Pool;
+    VkDescriptorPool Pool = nullptr;
     VkPipelineCache PipelineCache;
     VkPipeline Pipeline;
 
@@ -752,6 +752,10 @@ public:
     }
 
     if (P.isGraphics()) {
+      if (!P.Bindings.RTargetBufferPtr)
+        return llvm::createStringError(
+            std::errc::invalid_argument,
+            "No RenderTarget buffer specified for graphics pipeline.");
       Resource FrameBuffer = {
           ResourceKind::Texture2D,     "RenderTarget", {}, {},
           P.Bindings.RTargetBufferPtr, false};
@@ -776,6 +780,10 @@ public:
       if (auto Err = createDepthStencil(P, IS))
         return Err;
 
+      if (P.Bindings.VertexBufferPtr == nullptr)
+        return llvm::createStringError(
+            std::errc::invalid_argument,
+            "No Vertex buffer specified for graphics pipeline.");
       const Resource VertexBuffer = {
           ResourceKind::StructuredBuffer, "VertexBuffer", {}, {},
           P.Bindings.VertexBufferPtr,     false};
@@ -863,14 +871,16 @@ public:
       }
     }
 
-    VkDescriptorPoolCreateInfo PoolCreateInfo = {};
-    PoolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    PoolCreateInfo.poolSizeCount = PoolSizes.size();
-    PoolCreateInfo.pPoolSizes = PoolSizes.data();
-    PoolCreateInfo.maxSets = P.Sets.size();
-    if (vkCreateDescriptorPool(IS.Device, &PoolCreateInfo, nullptr, &IS.Pool))
-      return llvm::createStringError(std::errc::device_or_resource_busy,
-                                     "Failed to create descriptor pool.");
+    if (P.Sets.size() > 0) {
+      VkDescriptorPoolCreateInfo PoolCreateInfo = {};
+      PoolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+      PoolCreateInfo.poolSizeCount = PoolSizes.size();
+      PoolCreateInfo.pPoolSizes = PoolSizes.data();
+      PoolCreateInfo.maxSets = P.Sets.size();
+      if (vkCreateDescriptorPool(IS.Device, &PoolCreateInfo, nullptr, &IS.Pool))
+        return llvm::createStringError(std::errc::device_or_resource_busy,
+                                       "Failed to create descriptor pool.");
+    }
     return llvm::Error::success();
   }
 
@@ -913,20 +923,23 @@ public:
       return llvm::createStringError(std::errc::device_or_resource_busy,
                                      "Failed to create pipeline layout.");
 
-    VkDescriptorSetAllocateInfo DSAllocInfo = {};
-    DSAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    DSAllocInfo.descriptorPool = IS.Pool;
-    DSAllocInfo.descriptorSetCount = IS.DescriptorSetLayouts.size();
-    DSAllocInfo.pSetLayouts = IS.DescriptorSetLayouts.data();
-    assert(IS.DescriptorSets.empty());
-    IS.DescriptorSets.insert(IS.DescriptorSets.begin(),
-                             IS.DescriptorSetLayouts.size(), VkDescriptorSet());
-    llvm::outs() << "Num Descriptor sets: " << IS.DescriptorSetLayouts.size()
-                 << "\n";
-    if (vkAllocateDescriptorSets(IS.Device, &DSAllocInfo,
-                                 IS.DescriptorSets.data()))
-      return llvm::createStringError(std::errc::device_or_resource_busy,
-                                     "Failed to allocate descriptor sets.");
+    if (IS.DescriptorSets.size() > 0) {
+      VkDescriptorSetAllocateInfo DSAllocInfo = {};
+      DSAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+      DSAllocInfo.descriptorPool = IS.Pool;
+      DSAllocInfo.descriptorSetCount = IS.DescriptorSetLayouts.size();
+      DSAllocInfo.pSetLayouts = IS.DescriptorSetLayouts.data();
+      assert(IS.DescriptorSets.empty());
+      IS.DescriptorSets.insert(IS.DescriptorSets.begin(),
+                               IS.DescriptorSetLayouts.size(),
+                               VkDescriptorSet());
+      llvm::outs() << "Num Descriptor sets: " << IS.DescriptorSetLayouts.size()
+                   << "\n";
+      if (vkAllocateDescriptorSets(IS.Device, &DSAllocInfo,
+                                   IS.DescriptorSets.data()))
+        return llvm::createStringError(std::errc::device_or_resource_busy,
+                                       "Failed to allocate descriptor sets.");
+    }
 
     // Calculate the number of infos/views we are going to need for each type
     uint32_t ImageInfoCount = 0;
@@ -1296,7 +1309,6 @@ public:
         VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     MultisampleStateCI.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
-    assert(P.Bindings.VertexBufferPtr && "No vertex buffer for vertex shader");
     const uint32_t Stride = P.Bindings.getVertexStride();
 
     VkVertexInputBindingDescription VertexInputBinding{};
@@ -1529,7 +1541,6 @@ public:
                            VK_SUBPASS_CONTENTS_INLINE);
 
       VkViewport Viewport = {};
-      // Vulkan VkViewport fields: x, y, width, height, minDepth, maxDepth
       Viewport.x = 0.0f;
       Viewport.y = 0.0f;
       Viewport.width =
@@ -1541,7 +1552,6 @@ public:
       vkCmdSetViewport(IS.CmdBuffer, 0, 1, &Viewport);
 
       VkRect2D Scissor = {};
-      // ensure scissor offset is explicit
       Scissor.offset = {0, 0};
       Scissor.extent.width = P.Bindings.RTargetBufferPtr->OutputProps.Width;
       Scissor.extent.height = P.Bindings.RTargetBufferPtr->OutputProps.Height;
@@ -1552,9 +1562,10 @@ public:
                                               ? VK_PIPELINE_BIND_POINT_GRAPHICS
                                               : VK_PIPELINE_BIND_POINT_COMPUTE;
     vkCmdBindPipeline(IS.CmdBuffer, BindPoint, IS.Pipeline);
-    vkCmdBindDescriptorSets(IS.CmdBuffer, BindPoint, IS.PipelineLayout, 0,
-                            IS.DescriptorSets.size(), IS.DescriptorSets.data(),
-                            0, 0);
+    if (IS.DescriptorSets.size() > 0)
+      vkCmdBindDescriptorSets(IS.CmdBuffer, BindPoint, IS.PipelineLayout, 0,
+                              IS.DescriptorSets.size(),
+                              IS.DescriptorSets.data(), 0, 0);
 
     if (P.isCompute()) {
       const llvm::ArrayRef<int> DispatchSize =
@@ -1571,10 +1582,6 @@ public:
       // instanceCount must be >=1 to draw; previously was 0 which draws nothing
       vkCmdDraw(IS.CmdBuffer, P.Bindings.getVertexCount(), 1, 0, 0);
       llvm::outs() << "Drew " << P.Bindings.getVertexCount() << " vertices.\n";
-      llvm::outs() << "Vertex stride: " << P.Bindings.getVertexStride()
-                   << " bytes.\n";
-      llvm::outs() << "Vertex buffer size: "
-                   << P.Bindings.VertexBufferPtr->size() << " bytes.\n";
       vkCmdEndRenderPass(IS.CmdBuffer);
       copyResourceDataToHost(IS, IS.FrameBufferResource);
     }
@@ -1657,6 +1664,26 @@ public:
       }
     }
 
+    if (IS.getFullShaderStageMask() != VK_SHADER_STAGE_COMPUTE_BIT) {
+      if (IS.VertexBuffer.has_value()) {
+        vkDestroyBuffer(IS.Device, IS.VertexBuffer->Device.Buffer, nullptr);
+        vkFreeMemory(IS.Device, IS.VertexBuffer->Device.Memory, nullptr);
+        vkDestroyBuffer(IS.Device, IS.VertexBuffer->Host.Buffer, nullptr);
+        vkFreeMemory(IS.Device, IS.VertexBuffer->Host.Memory, nullptr);
+      }
+      for (auto &ResRef : IS.FrameBufferResource.ResourceRefs) {
+        // We know the device resource is an image, so no need to check it.
+        vkDestroyImage(IS.Device, ResRef.Image.Image, nullptr);
+        vkFreeMemory(IS.Device, ResRef.Image.Memory, nullptr);
+        vkDestroyBuffer(IS.Device, ResRef.Host.Buffer, nullptr);
+        vkFreeMemory(IS.Device, ResRef.Host.Memory, nullptr);
+      }
+      vkDestroyImage(IS.Device, IS.DepthStencil.Image, nullptr);
+      vkFreeMemory(IS.Device, IS.DepthStencil.Memory, nullptr);
+      vkDestroyFramebuffer(IS.Device, IS.FrameBuffer, nullptr);
+      vkDestroyRenderPass(IS.Device, IS.RenderPass, nullptr);
+    }
+
     vkDestroyPipeline(IS.Device, IS.Pipeline, nullptr);
 
     for (auto &S : IS.Shaders)
@@ -1669,7 +1696,8 @@ public:
     for (auto &L : IS.DescriptorSetLayouts)
       vkDestroyDescriptorSetLayout(IS.Device, L, nullptr);
 
-    vkDestroyDescriptorPool(IS.Device, IS.Pool, nullptr);
+    if (IS.Pool)
+      vkDestroyDescriptorPool(IS.Device, IS.Pool, nullptr);
 
     vkDestroyCommandPool(IS.Device, IS.CmdPool, nullptr);
     vkDestroyDevice(IS.Device, nullptr);
