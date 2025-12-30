@@ -12,9 +12,20 @@
 #ifndef OFFLOADTEST_API_API_H
 #define OFFLOADTEST_API_API_H
 
+#include "llvm/Support/Error.h"
+
+namespace llvm {
+class raw_ostream;
+}
 namespace offloadtest {
+struct Shader;
+struct Buffer;
 
 enum class GPUAPI { Unknown, DirectX, Vulkan, Metal };
+
+llvm::Error PrintDebugStream(const Buffer &Buffer,
+                      const Shader &Shader,
+                      llvm::raw_ostream &Out);
 
 }
 

@@ -1,0 +1,72 @@
+#--- source.hlsl
+
+#include "dx/printf.h"
+
+[numthreads(16,1,1)]
+void main(uint3 TID : SV_GroupThreadID) {
+    dx::InitializeDebugStream(); // Required to initialize the debug output stream.
+    uint idx = TID.x;
+    uint value = idx + 1;
+    if (value % 3 == 0 && value % 5 == 0) {
+        dx::printf("FizzBuzz(%u)\n", value);
+    } else if (value % 3 == 0) {
+        dx::printf("Fizz(%u)\n", value);
+    } else if (value % 5 == 0) {
+        dx::printf("Buzz(%u)\n", value);
+    } else {
+        dx::printf("baz(%u)\n", value);
+    }
+}
+
+//--- pipeline.yaml
+
+---
+Shaders:
+  - Stage: Compute
+    Entry: main
+    DispatchSize: [1, 1, 1]
+Buffers:
+  - Name: Out
+    Format: UInt32
+    FillSize: 2048
+  - Name: Out2
+    Format: UInt32
+    FillSize: 2048
+DescriptorSets:
+  - Resources:
+    - Name: Out
+      Kind: RWByteAddressBuffer
+      DirectXBinding:
+        Register: 0
+        Space: 9
+    - Name: Out2
+      Kind: RWByteAddressBuffer
+      DirectXBinding:
+        Register: 1
+        Space: 9
+...
+
+#--- end
+# REQUIRES: DirectX
+# XFAIL: Clang
+
+# RUN: split-file %s %t
+# RUN: %dxc_target -T cs_6_0 -HV 202x -I C:\Users\cbieneman\dev\DirectXShaderCompiler\tools\clang\lib\Headers\hlsl -Fo %t.o %t/source.hlsl
+# RUN: %offloader %t/pipeline.yaml %t.o -printf Out | FileCheck %s
+
+#CHECK: FizzBuzz(15)
+#CHECK: Fizz(3)
+#CHECK: Fizz(6)
+#CHECK: Fizz(9)
+#CHECK: Fizz(12)
+#CHECK: Buzz(5)
+#CHECK: Buzz(10)
+#CHECK: baz(1)
+#CHECK: baz(2)
+#CHECK: baz(4)
+#CHECK: baz(7)
+#CHECK: baz(8)
+#CHECK: baz(11)
+#CHECK: baz(13)
+#CHECK: baz(14)
+#CHECK: baz(16)

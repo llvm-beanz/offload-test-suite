@@ -63,6 +63,10 @@ static cl::opt<bool> Validation("validation-layer",
 
 static cl::opt<bool> UseWarp("warp", cl::desc("Use warp"));
 
+static cl::opt<std::string>
+    DebugStream("printf", cl::desc("Resource name to interpret as debug print stream"),
+                cl::value_desc("<name>"), cl::init(""));
+
 static std::unique_ptr<MemoryBuffer> readFile(const std::string &Path) {
   const ExitOnError ExitOnErr("gpu-exec: error: ");
   ErrorOr<std::unique_ptr<MemoryBuffer>> FileOrErr =
@@ -153,6 +157,7 @@ int run() {
       return 1;
     }
 
+    unsigned ShaderDebugIndex = 0;
     for (const auto &B : PipelineDesc.Buffers) {
       if (B.Name == ImageOutput) {
         if (B.ArraySize != 1)
@@ -166,6 +171,9 @@ int run() {
         ExitOnErr(Image::writePNG(Img, OutputFilename));
         return 0;
       }
+      // TODO: make the debug stream go to the output filename!
+      if (B.Name == DebugStream && ShaderDebugIndex < PipelineDesc.Shaders.size())
+        ExitOnErr(PrintDebugStream(B, PipelineDesc.Shaders[ShaderDebugIndex++], llvm::errs()));
     }
 
     if (Quiet)

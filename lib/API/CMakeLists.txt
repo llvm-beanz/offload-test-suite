@@ -30,6 +30,7 @@ endif()
 
 add_offloadtest_library(API
   Capabilities.cpp
+  DebugStream.cpp
   Device.cpp
   ${api_sources})
 
