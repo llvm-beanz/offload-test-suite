@@ -31,7 +31,7 @@ struct GradientContext
     {
         for (int i = 0; i < variable_count; i++)
         {
-            gradients[i] = T(0);
+            gradients[i] = (T)0;
         }
     }
     
@@ -776,6 +776,320 @@ T compute_gradients(inout GradientContext<T> context, BackSqrtExpr<T, E> expr)
     context.zeroGradients();
     T result = expr.forward();
     expr.backward(context, T(1));
+    return result;
+}
+
+// ============================================================================
+// Vector and Matrix Support for Backward AD
+// ============================================================================
+
+// ============================================================================
+// Vector Operations
+// ============================================================================
+
+// Vector Dot Product
+template<typename T, int N, typename L, typename R>
+struct BackDotExpr
+{
+    L left;
+    R right;
+    vector<T, N> left_val;
+    vector<T, N> right_val;
+    
+    T forward()
+    {
+        left_val = left.forward();
+        right_val = right.forward();
+        return dot(left_val, right_val);
+    }
+    
+    void backward(inout GradientContext<vector<T, N> > context, T gradient)
+    {
+        // d(dot(u,v))/du = v, d(dot(u,v))/dv = u
+        left.backward(context, right_val * gradient);
+        right.backward(context, left_val * gradient);
+    }
+};
+
+// Vector Cross Product (3D only)
+template<typename T, typename L, typename R>
+struct BackCrossExpr
+{
+    L left;
+    R right;
+    vector<T, 3> left_val;
+    vector<T, 3> right_val;
+    
+    vector<T, 3> forward()
+    {
+        left_val = left.forward();
+        right_val = right.forward();
+        return cross(left_val, right_val);
+    }
+    
+    void backward(inout GradientContext<vector<T, 3> > context, vector<T, 3> gradient)
+    {
+        // d(cross(u,v))/du = cross(gradient, v), d(cross(u,v))/dv = cross(u, gradient)
+        left.backward(context, cross(gradient, right_val));
+        right.backward(context, cross(left_val, gradient));
+    }
+};
+
+// Vector Length
+template<typename T, int N, typename E>
+struct BackLengthExpr
+{
+    E expr;
+    vector<T, N> expr_val;
+    T result_val;
+    
+    T forward()
+    {
+        expr_val = expr.forward();
+        result_val = length(expr_val);
+        return result_val;
+    }
+    
+    void backward(inout GradientContext<vector<T, N> > context, T gradient)
+    {
+        // d(|v|)/dv = v / |v|
+        expr.backward(context, (expr_val / result_val) * gradient);
+    }
+};
+
+// Vector Normalize
+template<typename T, int N, typename E>
+struct BackNormalizeExpr
+{
+    E expr;
+    vector<T, N> expr_val;
+    vector<T, N> result_val;
+    T length_val;
+    
+    vector<T, N> forward()
+    {
+        expr_val = expr.forward();
+        length_val = length(expr_val);
+        result_val = normalize(expr_val);
+        return result_val;
+    }
+    
+    void backward(inout GradientContext<vector<T, N> > context, vector<T, N> gradient)
+    {
+        // d(normalize(v))/dv = (I - normalize(v) * normalize(v)^T) / |v|
+        // Simplified: (gradient * length - result * dot(gradient, result)) / length
+        T dot_grad_result = dot(gradient, result_val);
+        vector<T, N> back_grad = (gradient * length_val - result_val * dot_grad_result) / length_val;
+        expr.backward(context, back_grad);
+    }
+};
+
+// ============================================================================
+// Matrix Operations
+// ============================================================================
+
+// Matrix-Vector Multiplication
+template<typename T, int N, int K, typename L, typename R>
+struct BackMatVecMulExpr
+{
+    L left;   // Matrix NxK
+    R right;  // Vector K
+    matrix<T, N, K> left_val;
+    vector<T, K> right_val;
+    
+    vector<T, N> forward()
+    {
+        left_val = left.forward();
+        right_val = right.forward();
+        return mul(left_val, right_val);
+    }
+    
+    void backward(inout GradientContext<vector<T, N> > context, vector<T, N> gradient)
+    {
+        // d(A*v)/dA = v * gradient^T, d(A*v)/dv = A^T * gradient
+        // For matrix gradient, we need a different context type - simplified here
+        right.backward(context, mul(transpose(left_val), gradient));
+    }
+};
+
+// Matrix Determinant (2x2 only for simplicity)
+template<typename T, typename E>
+struct BackDet2x2Expr
+{
+    E expr;
+    matrix<T, 2, 2> expr_val;
+    
+    T forward()
+    {
+        expr_val = expr.forward();
+        return determinant(expr_val);
+    }
+    
+    void backward(inout GradientContext<matrix<T, 2, 2> > context, T gradient)
+    {
+        // d(det(M))/dM = adj(M)^T where adj is adjugate matrix
+        // For 2x2: adj([[a,b],[c,d]]) = [[d,-b],[-c,a]]
+        matrix<T, 2, 2> adj_matrix;
+        adj_matrix[0][0] = expr_val[1][1];  // d
+        adj_matrix[0][1] = -expr_val[0][1]; // -b
+        adj_matrix[1][0] = -expr_val[1][0]; // -c  
+        adj_matrix[1][1] = expr_val[0][0];  // a
+        
+        expr.backward(context, adj_matrix * gradient);
+    }
+};
+
+// ============================================================================
+// Vector/Matrix Variable Support
+// ============================================================================
+
+// Create vector variable
+template<typename T, int N>
+Variable<vector<T, N> > variableVector(inout GradientContext<vector<T, N> > context, vector<T, N> value)
+{
+    Variable<vector<T, N> > var;
+    var.value = value;
+    var.id = context.allocateVariable();
+    return var;
+}
+
+// Create matrix variable
+template<typename T, int N, int M>
+Variable<matrix<T, N, M> > variableMatrix(inout GradientContext<matrix<T, N, M> > context, matrix<T, N, M> value)
+{
+    Variable<matrix<T, N, M> > var;
+    var.value = value;
+    var.id = context.allocateVariable();
+    return var;
+}
+
+// ============================================================================
+// Vector/Matrix Expression Creation Functions
+// ============================================================================
+
+template<typename T, int N, typename L, typename R>
+BackDotExpr<T, N, L, R> dotProduct(L left, R right)
+{
+    BackDotExpr<T, N, L, R> expr;
+    expr.left = left;
+    expr.right = right;
+    return expr;
+}
+
+template<typename T, typename L, typename R>
+BackCrossExpr<T, L, R> crossProduct(L left, R right)
+{
+    BackCrossExpr<T, L, R> expr;
+    expr.left = left;
+    expr.right = right;
+    return expr;
+}
+
+template<typename T, int N, typename E>
+BackLengthExpr<T, N, E> lengthExpr(E expr)
+{
+    BackLengthExpr<T, N, E> result;
+    result.expr = expr;
+    return result;
+}
+
+template<typename T, int N, typename E>
+BackNormalizeExpr<T, N, E> normalizeExpr(E expr)
+{
+    BackNormalizeExpr<T, N, E> result;
+    result.expr = expr;
+    return result;
+}
+
+template<typename T, int N, int K, typename L, typename R>
+BackMatVecMulExpr<T, N, K, L, R> matVecMul(L left, R right)
+{
+    BackMatVecMulExpr<T, N, K, L, R> expr;
+    expr.left = left;
+    expr.right = right;
+    return expr;
+}
+
+template<typename T, typename E>
+BackDet2x2Expr<T, E> determinantExpr(E expr)
+{
+    BackDet2x2Expr<T, E> result;
+    result.expr = expr;
+    return result;
+}
+
+// ============================================================================
+// Vector/Matrix Compute Gradients Functions
+// ============================================================================
+
+template<typename T, int N, typename L, typename R>
+T compute_gradients(inout GradientContext<vector<T, N> > context, BackDotExpr<T, N, L, R> expr)
+{
+    context.zeroGradients();
+    T result = expr.forward();
+    expr.backward(context, (T)1);
+    return result;
+}
+
+template<typename T, typename L, typename R>
+vector<T, 3> compute_gradients(inout GradientContext<vector<T, 3> > context, BackCrossExpr<T, L, R> expr)
+{
+    context.zeroGradients();
+    vector<T, 3> result = expr.forward();
+    vector<T, 3> seed = { (T)1, (T)1, (T)1 };
+    expr.backward(context, seed);
+    return result;
+}
+
+template<typename T, int N, typename E>
+T compute_gradients(inout GradientContext<vector<T, N> > context, BackLengthExpr<T, N, E> expr)
+{
+    context.zeroGradients();
+    T result = expr.forward();
+    expr.backward(context, (T)1);
+    return result;
+}
+
+template<typename T, int N, typename E>
+vector<T, N> compute_gradients(inout GradientContext<vector<T, N> > context, BackNormalizeExpr<T, N, E> expr)
+{
+    context.zeroGradients();
+    vector<T, N> result = expr.forward();
+    vector<T, N> seed = (vector<T, N>)0;
+    if (N >= 1) seed[0] = (T)1;
+    expr.backward(context, seed);
+    return result;
+}
+
+template<typename T, int N, int K, typename L, typename R>
+vector<T, N> compute_gradients(inout GradientContext<vector<T, N> > context, BackMatVecMulExpr<T, N, K, L, R> expr)
+{
+    context.zeroGradients();
+    vector<T, N> result = expr.forward();
+    vector<T, N> seed = (vector<T, N>)0;
+    if (N >= 1) seed[0] = (T)1;
+    expr.backward(context, seed);
+    return result;
+}
+
+template<typename T, typename E>
+T compute_gradients(inout GradientContext<matrix<T, 2, 2> > context, BackDet2x2Expr<T, E> expr)
+{
+    context.zeroGradients();
+    T result = expr.forward();
+    expr.backward(context, (T)1);
+    return result;
+}
+
+// Additional overload for matrix-vector multiplication with matrix context
+template<typename T, int N, int K, typename L, typename R>
+vector<T, N> compute_gradients(inout GradientContext<matrix<T, N, K> > context, BackMatVecMulExpr<T, N, K, L, R> expr)
+{
+    context.zeroGradients();
+    vector<T, N> result = expr.forward();
+    vector<T, N> seed = (vector<T, N>)0;
+    if (N >= 1) seed[0] = (T)1;
+    expr.backward(context, seed);
     return result;
 }
 
