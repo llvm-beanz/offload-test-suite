@@ -7,16 +7,16 @@
 // Example 1: Simple function f(x) = x^2, f'(x) = 2x
 void ExampleSimpleQuadratic()
 {
-    reset_variables();
+    reset_variables<float>();
     
-    Variable x = variable(3.0f);  // x = 3
-    VariableExpr x_expr = makeVariableExpr(x);
+    Variable<float> x = variable<float>(3.0f);  // x = 3
+    VariableExpr<float> x_expr = makeVariableExpr<float>(x);
     
     // f(x) = x^2
-    BackMulExpr<VariableExpr, VariableExpr> f = multiply(x_expr, x_expr);
+    BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > f = multiply<float>(x_expr, x_expr);
     
     // Compute function value and gradients
-    float result = compute_gradients(f);
+    float result = compute_gradients<float>(f);
     
     // result should be 9.0 (3^2)
     // x.gradient() should be 6.0 (2*3)
@@ -27,21 +27,21 @@ void ExampleSimpleQuadratic()
 // Example 2: Multi-variable function f(x,y) = x*y + x^2
 void ExampleMultiVariable()
 {
-    reset_variables();
+    reset_variables<float>();
     
-    Variable x = variable(2.0f);  // x = 2
-    Variable y = variable(3.0f);  // y = 3
+    Variable<float> x = variable<float>(2.0f);  // x = 2
+    Variable<float> y = variable<float>(3.0f);  // y = 3
     
-    VariableExpr x_expr = makeVariableExpr(x);
-    VariableExpr y_expr = makeVariableExpr(y);
+    VariableExpr<float> x_expr = makeVariableExpr<float>(x);
+    VariableExpr<float> y_expr = makeVariableExpr<float>(y);
     
     // f(x,y) = x*y + x^2
-    BackMulExpr<VariableExpr, VariableExpr> xy = multiply(x_expr, y_expr);
-    BackMulExpr<VariableExpr, VariableExpr> x_squared = multiply(x_expr, x_expr);
-    BackAddExpr<BackMulExpr<VariableExpr, VariableExpr>, BackMulExpr<VariableExpr, VariableExpr> > f = add(xy, x_squared);
+    BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > xy = multiply<float>(x_expr, y_expr);
+    BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > x_squared = multiply<float>(x_expr, x_expr);
+    BackAddExpr<float, BackMulExpr<float, VariableExpr<float>, VariableExpr<float> >, BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > > f = add<float>(xy, x_squared);
     
     // Compute function value and gradients
-    float result = compute_gradients(f);
+    float result = compute_gradients<float>(f);
     
     // result should be 10.0 (2*3 + 2^2 = 6 + 4)
     // ∂f/∂x = y + 2x = 3 + 4 = 7
@@ -55,17 +55,17 @@ void ExampleMultiVariable()
 // f(x) = sin(x) * cos(x) + exp(x)
 void ExampleTrigonometric()
 {
-    reset_variables();
+    reset_variables<float>();
     
-    Variable x = variable(1.0f);  // x = 1
-    VariableExpr x_expr = makeVariableExpr(x);
+    Variable<float> x = variable<float>(1.0f);  // x = 1
+    VariableExpr<float> x_expr = makeVariableExpr<float>(x);
     
     // f(x) = sin(x) * cos(x) + exp(x)
-    BackSinExpr<VariableExpr> sin_x = sinExpr(x_expr);
-    BackCosExpr<VariableExpr> cos_x = cosExpr(x_expr);
-    BackMulExpr<BackSinExpr<VariableExpr>, BackCosExpr<VariableExpr> > sin_cos = multiply(sin_x, cos_x);
-    BackExpExpr<VariableExpr> exp_x = expExpr(x_expr);
-    BackAddExpr<BackMulExpr<BackSinExpr<VariableExpr>, BackCosExpr<VariableExpr> >, BackExpExpr<VariableExpr> > f = add(sin_cos, exp_x);
+    BackSinExpr<float, VariableExpr<float> > sin_x = sinExpr<float>(x_expr);
+    BackCosExpr<float, VariableExpr<float> > cos_x = cosExpr<float>(x_expr);
+    BackMulExpr<float, BackSinExpr<float, VariableExpr<float> >, BackCosExpr<float, VariableExpr<float> > > sin_cos = multiply<float>(sin_x, cos_x);
+    BackExpExpr<float, VariableExpr<float> > exp_x = expExpr<float>(x_expr);
+    BackAddExpr<float, BackMulExpr<float, BackSinExpr<float, VariableExpr<float> >, BackCosExpr<float, VariableExpr<float> > >, BackExpExpr<float, VariableExpr<float> > > f = add<float>(sin_cos, exp_x);
     
     // Compute function value and gradients
     float result = compute_gradients(f);
@@ -79,15 +79,15 @@ void ExampleTrigonometric()
 // f(x) = log(x^2 + 1)
 void ExampleChainRule()
 {
-    reset_variables();
+    reset_variables<float>();
     
-    Variable x = variable(2.0f);  // x = 2
-    VariableExpr x_expr = makeVariableExpr(x);
+    Variable<float> x = variable<float>(2.0f);  // x = 2
+    VariableExpr<float> x_expr = makeVariableExpr<float>(x);
     
     // f(x) = log(x^2 + 1)
-    BackMulExpr<VariableExpr, VariableExpr> x_squared = multiply(x_expr, x_expr);
-    BackAddExpr<BackMulExpr<VariableExpr, VariableExpr>, float> x_sq_plus_1 = add(x_squared, 1.0f);
-    BackLogExpr<BackAddExpr<BackMulExpr<VariableExpr, VariableExpr>, float>> f = logExpr(x_sq_plus_1);
+    BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > x_squared = multiply<float>(x_expr, x_expr);
+    BackAddExpr<float, BackMulExpr<float, VariableExpr<float>, VariableExpr<float> >, float> x_sq_plus_1 = add<float>(x_squared, 1.0f);
+    BackLogExpr<float, BackAddExpr<float, BackMulExpr<float, VariableExpr<float>, VariableExpr<float> >, float> > f = logExpr<float>(x_sq_plus_1);
     
     // Compute function value and gradients
     float result = compute_gradients(f);
@@ -102,29 +102,29 @@ void ExampleChainRule()
 // f2(x,y) = x*y (product)
 void ExampleJacobian()
 {
-    reset_variables();
+    reset_variables<float>();
     
-    Variable x = variable(3.0f);  // x = 3
-    Variable y = variable(4.0f);  // y = 4
+    Variable<float> x = variable<float>(3.0f);  // x = 3
+    Variable<float> y = variable<float>(4.0f);  // y = 4
     
-    VariableExpr x_expr = makeVariableExpr(x);
-    VariableExpr y_expr = makeVariableExpr(y);
+    VariableExpr<float> x_expr = makeVariableExpr<float>(x);
+    VariableExpr<float> y_expr = makeVariableExpr<float>(y);
     
     // f1(x,y) = x^2 + y^2
-    BackMulExpr<VariableExpr, VariableExpr> x_squared = multiply(x_expr, x_expr);
-    BackMulExpr<VariableExpr, VariableExpr> y_squared = multiply(y_expr, y_expr);
-    BackAddExpr<BackMulExpr<VariableExpr, VariableExpr>, BackMulExpr<VariableExpr, VariableExpr>> f1 = add(x_squared, y_squared);
+    BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > x_squared = multiply<float>(x_expr, x_expr);
+    BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > y_squared = multiply<float>(y_expr, y_expr);
+    BackAddExpr<float, BackMulExpr<float, VariableExpr<float>, VariableExpr<float> >, BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > > f1 = add<float>(x_squared, y_squared);
     
     // Compute f1 and its gradients
-    float f1_value = compute_gradients(f1);
+    float f1_value = compute_gradients<float>(f1);
     float df1_dx = x.gradient();
     float df1_dy = y.gradient();
     
     // f2(x,y) = x*y
-    BackMulExpr<VariableExpr, VariableExpr> f2 = multiply(x_expr, y_expr);
+    BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > f2 = multiply<float>(x_expr, y_expr);
     
     // Compute f2 and its gradients
-    float f2_value = compute_gradients(f2);
+    float f2_value = compute_gradients<float>(f2);
     float df2_dx = x.gradient();
     float df2_dy = y.gradient();
     
@@ -143,23 +143,23 @@ void ExampleGradientDescent()
     
     for (int iter = 0; iter < 10; iter++)
     {
-        reset_variables();
+        reset_variables<float>();
         
-        Variable x = variable(x_val);
-        Variable y = variable(y_val);
+        Variable<float> x = variable<float>(x_val);
+        Variable<float> y = variable<float>(y_val);
         
-        VariableExpr x_expr = makeVariableExpr(x);
-        VariableExpr y_expr = makeVariableExpr(y);
+        VariableExpr<float> x_expr = makeVariableExpr<float>(x);
+        VariableExpr<float> y_expr = makeVariableExpr<float>(y);
         
         // f(x,y) = (x-1)^2 + (y-2)^2
-        BackSubExpr<VariableExpr, float> x_minus_1 = subtract(x_expr, 1.0f);
-        BackSubExpr<VariableExpr, float> y_minus_2 = subtract(y_expr, 2.0f);
-        BackMulExpr<BackSubExpr<VariableExpr, float>, BackSubExpr<VariableExpr, float>> term1 = multiply(x_minus_1, x_minus_1);
-        BackMulExpr<BackSubExpr<VariableExpr, float>, BackSubExpr<VariableExpr, float>> term2 = multiply(y_minus_2, y_minus_2);
-        BackAddExpr<BackMulExpr<BackSubExpr<VariableExpr, float>, BackSubExpr<VariableExpr, float>>, BackMulExpr<BackSubExpr<VariableExpr, float>, BackSubExpr<VariableExpr, float>>> f = add(term1, term2);
+        BackSubExpr<float, VariableExpr<float>, float> x_minus_1 = subtract<float>(x_expr, 1.0f);
+        BackSubExpr<float, VariableExpr<float>, float> y_minus_2 = subtract<float>(y_expr, 2.0f);
+        BackMulExpr<float, BackSubExpr<float, VariableExpr<float>, float>, BackSubExpr<float, VariableExpr<float>, float> > term1 = multiply<float>(x_minus_1, x_minus_1);
+        BackMulExpr<float, BackSubExpr<float, VariableExpr<float>, float>, BackSubExpr<float, VariableExpr<float>, float> > term2 = multiply<float>(y_minus_2, y_minus_2);
+        BackAddExpr<float, BackMulExpr<float, BackSubExpr<float, VariableExpr<float>, float>, BackSubExpr<float, VariableExpr<float>, float> >, BackMulExpr<float, BackSubExpr<float, VariableExpr<float>, float>, BackSubExpr<float, VariableExpr<float>, float> > > f = add<float>(term1, term2);
         
         // Compute function value and gradients
-        float loss = compute_gradients(f);
+        float loss = compute_gradients<float>(f);
         float grad_x = x.gradient();
         float grad_y = y.gradient();
         
@@ -179,29 +179,29 @@ void ExampleGradientDescent()
 // Simple linear layer: y = W*x + b, loss = (y - target)^2
 void ExampleNeuralNetwork()
 {
-    reset_variables();
+    reset_variables<float>();
     
     // Input
     float x_input = 2.0f;
     float target = 5.0f;
     
     // Parameters (weights and bias)
-    Variable W = variable(1.0f);  // Weight
-    Variable b = variable(0.0f);  // Bias
+    Variable<float> W = variable<float>(1.0f);  // Weight
+    Variable<float> b = variable<float>(0.0f);  // Bias
     
-    VariableExpr W_expr = makeVariableExpr(W);
-    VariableExpr b_expr = makeVariableExpr(b);
+    VariableExpr<float> W_expr = makeVariableExpr<float>(W);
+    VariableExpr<float> b_expr = makeVariableExpr<float>(b);
     
     // Forward pass: y = W*x + b
-    BackMulExpr<VariableExpr, float> Wx = multiply(W_expr, x_input);
-    BackAddExpr<BackMulExpr<VariableExpr, float>, VariableExpr> y = add(Wx, b_expr);
+    BackMulExpr<float, VariableExpr<float>, float> Wx = multiply<float>(W_expr, x_input);
+    BackAddExpr<float, BackMulExpr<float, VariableExpr<float>, float>, VariableExpr<float> > y = add<float>(Wx, b_expr);
     
     // Loss: (y - target)^2
-    BackSubExpr<BackAddExpr<BackMulExpr<VariableExpr, float>, VariableExpr>, float> error = subtract(y, target);
-    BackMulExpr<BackSubExpr<BackAddExpr<BackMulExpr<VariableExpr, float>, VariableExpr>, float>, BackSubExpr<BackAddExpr<BackMulExpr<VariableExpr, float>, VariableExpr>, float>> loss = multiply(error, error);
+    BackSubExpr<float, BackAddExpr<float, BackMulExpr<float, VariableExpr<float>, float>, VariableExpr<float> >, float> error = subtract<float>(y, target);
+    BackMulExpr<float, BackSubExpr<float, BackAddExpr<float, BackMulExpr<float, VariableExpr<float>, float>, VariableExpr<float> >, float>, BackSubExpr<float, BackAddExpr<float, BackMulExpr<float, VariableExpr<float>, float>, VariableExpr<float> >, float> > loss = multiply<float>(error, error);
     
     // Compute loss and gradients
-    float loss_value = compute_gradients(loss);
+    float loss_value = compute_gradients<float>(loss);
     float dL_dW = W.gradient();  // Gradient w.r.t. weight
     float dL_db = b.gradient();  // Gradient w.r.t. bias
     

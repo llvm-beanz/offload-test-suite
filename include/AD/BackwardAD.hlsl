@@ -2,118 +2,171 @@
 #define BACKWARD_AD_HLSL
 
 // ============================================================================
-// Backward Automatic Differentiation for HLSL
+// Backward Automatic Differentiation for HLSL - Templated Version
 // ============================================================================
 // This header provides reverse-mode automatic differentiation using expression 
 // templates. Backward mode is efficient for functions with many inputs and 
 // few outputs (like gradients for optimization).
 
-// Forward declarations
-struct Variable;
-template<typename E> struct BackwardExpr;
-
 // Maximum number of variables supported (for gradient storage)
 #define MAX_VARIABLES 64
 
-// Global gradient storage
-static float g_gradients[MAX_VARIABLES];
-static int g_variable_count = 0;
+// Global gradient storage - template specialized per type
+#define DECLARE_GRADIENT_STORAGE(T) \
+    static T g_gradients_##T[MAX_VARIABLES]; \
+    static int g_variable_count_##T = 0;
+
+// Declare storage for common types
+DECLARE_GRADIENT_STORAGE(float)
+DECLARE_GRADIENT_STORAGE(double)
+DECLARE_GRADIENT_STORAGE(half)
+DECLARE_GRADIENT_STORAGE(int)
 
 // ============================================================================
 // Variable Class - Represents Input Variables
 // ============================================================================
 
+template<typename T>
 struct Variable
 {
-    float value;
+    T value;
     int id;
     
     // Note: HLSL doesn't support constructors, so we use init functions
-    static Variable makeVariable(float val)
-    {
-        Variable var;
-        var.value = val;
-        var.id = g_variable_count;
-        g_variable_count++;
-        return var;
-    }
+    static Variable makeVariable(T val);
     
     // Get the current gradient for this variable
-    float gradient()
-    {
-        return g_gradients[id];
-    }
+    T gradient();
     
     // Reset gradient to zero
-    void zeroGradient()
-    {
-        g_gradients[id] = 0.0f;
-    }
+    void zeroGradient();
 };
 
-// ============================================================================
-// Base Expression Template
-// ============================================================================
+// Template specializations for Variable methods
+#define SPECIALIZE_VARIABLE(T) \
+template<> \
+Variable<T> Variable<T>::makeVariable(T val) \
+{ \
+    Variable<T> var; \
+    var.value = val; \
+    var.id = g_variable_count_##T; \
+    g_variable_count_##T++; \
+    return var; \
+} \
+template<> \
+T Variable<T>::gradient() \
+{ \
+    return g_gradients_##T[id]; \
+} \
+template<> \
+void Variable<T>::zeroGradient() \
+{ \
+    g_gradients_##T[id] = T(0); \
+}
 
-template<typename Derived>
-struct BackwardExpr
-{
-    // Forward evaluation - compute the value
-    float forward()
-    {
-        // HLSL doesn't support static_cast, so we use direct function calls
-        // This will be specialized by derived classes
-        return 0.0f; // Default implementation
-    }
-    
-    // Backward pass - propagate gradients
-    void backward(float gradient)
-    {
-        // HLSL doesn't support static_cast, so we use direct function calls
-        // This will be specialized by derived classes
-    }
-};
+SPECIALIZE_VARIABLE(float)
+SPECIALIZE_VARIABLE(double)
+SPECIALIZE_VARIABLE(half)
+SPECIALIZE_VARIABLE(int)
 
 // ============================================================================
 // Variable Expression (Leaf Node)
 // ============================================================================
 
+template<typename T>
 struct VariableExpr
 {
-    Variable var;
+    Variable<T> var;
     
-    float forward()
+    T forward()
     {
         return var.value;
     }
     
-    void backward(float gradient)
+    void backward(T gradient)
     {
-        // Accumulate gradient for this variable
-        g_gradients[var.id] += gradient;
+        // Accumulate gradient for this variable - template specialized
+        // Will be defined per type below
     }
 };
+
+// Template specializations for VariableExpr backward method
+#define SPECIALIZE_VARIABLE_EXPR(T) \
+template<> \
+void VariableExpr<T>::backward(T gradient) \
+{ \
+    g_gradients_##T[var.id] += gradient; \
+}
+
+SPECIALIZE_VARIABLE_EXPR(float)
+SPECIALIZE_VARIABLE_EXPR(double)
+SPECIALIZE_VARIABLE_EXPR(half)
+SPECIALIZE_VARIABLE_EXPR(int)
 
 // ============================================================================
 // Addition Expression
 // ============================================================================
 
-template<typename L, typename R>
+template<typename T, typename L, typename R>
 struct BackAddExpr
 {
     L left;
     R right;
     
-    float forward()
+    T forward()
     {
-        return getForward(left) + getForward(right);
+        return left.forward() + right.forward();
     }
     
-    void backward(float gradient)
+    void backward(T gradient)
     {
         // d(left + right)/dleft = 1, d(left + right)/dright = 1
-        propagateBackward(left, gradient);
-        propagateBackward(right, gradient);
+        left.backward(gradient);
+        right.backward(gradient);
+    }
+};
+
+// ============================================================================
+// Scalar-Expression Operations (for constants like 2.0f + expr)
+// ============================================================================
+
+// Scalar + Expression
+template<typename T, typename R>
+struct BackAddExpr<T, T, R>
+{
+    T left;        // scalar constant
+    R right;       // expression
+    
+    T forward()
+    {
+        return left + right.forward();
+    }
+    
+    void backward(T gradient)
+    {
+        // d(scalar + right)/dright = 1
+        // No gradient for scalar constant
+        right.backward(gradient);
+    }
+};
+
+// Expression + Scalar
+template<typename T, typename L>
+struct BackAddExpr<T, L, T>
+{
+    L left;        // expression
+    T right;       // scalar constant
+    
+    T forward()
+    {
+        return left.forward() + right;
+    }
+    
+    void backward(T gradient)
+    {
+        // d(left + scalar)/dleft = 1
+        // No gradient for scalar constant
+        left.backward(gradient);
     }
 };
 
@@ -121,22 +174,66 @@ struct BackAddExpr
 // Subtraction Expression
 // ============================================================================
 
-template<typename L, typename R>
+template<typename T, typename L, typename R>
 struct BackSubExpr
 {
     L left;
     R right;
     
-    float forward()
+    T forward()
     {
-        return getForward(left) - getForward(right);
+        return left.forward() - right.forward();
     }
     
-    void backward(float gradient)
+    void backward(T gradient)
     {
         // d(left - right)/dleft = 1, d(left - right)/dright = -1
-        propagateBackward(left, gradient);
-        propagateBackward(right, -gradient);
+        left.backward(gradient);
+        right.backward(-gradient);
+    }
+};
+
+// ============================================================================  
+// Scalar-Expression Subtraction
+// ============================================================================
+
+// Scalar - Expression
+template<typename T, typename R>
+struct BackSubExpr<T, T, R>
+{
+    T left;        // scalar constant
+    R right;       // expression
+    
+    T forward()
+    {
+        return left - right.forward();
+    }
+    
+    void backward(T gradient)
+    {
+        // d(scalar - right)/dright = -1
+        // No gradient for scalar constant  
+        right.backward(-gradient);
+    }
+};
+
+// Expression - Scalar
+template<typename T, typename L>
+struct BackSubExpr<T, L, T>
+{
+    L left;        // expression
+    T right;       // scalar constant
+    
+    T forward()
+    {
+        return left.forward() - right;
+    }
+    
+    void backward(T gradient)
+    {
+        // d(left - scalar)/dleft = 1
+        // No gradient for scalar constant
+        left.backward(gradient);
     }
 };
 
@@ -144,26 +241,77 @@ struct BackSubExpr
 // Multiplication Expression
 // ============================================================================
 
-template<typename L, typename R>
+template<typename T, typename L, typename R>
 struct BackMulExpr
 {
     L left;
     R right;
-    float left_val;
-    float right_val;
+    T left_val;
+    T right_val;
     
-    float forward()
+    T forward()
     {
-        left_val = getForward(left);
-        right_val = getForward(right);
+        left_val = left.forward();
+        right_val = right.forward();
         return left_val * right_val;
     }
     
-    void backward(float gradient)
+    void backward(T gradient)
     {
         // d(left * right)/dleft = right, d(left * right)/dright = left
-        propagateBackward(left, gradient * right_val);
-        propagateBackward(right, gradient * left_val);
+        left.backward(gradient * right_val);
+        right.backward(gradient * left_val);
+    }
+};
+
+// ============================================================================
+// Scalar-Expression Multiplication (for constants like 2.0f * expr)
+// ============================================================================
+
+template<typename T, typename R>
+struct BackMulExpr<T, T, R>
+{
+    T left;        // scalar constant
+    R right;       // expression
+    T left_val;
+    T right_val;
+    
+    T forward()
+    {
+        left_val = left;  // scalar value
+        right_val = right.forward();  // expression value
+        return left_val * right_val;
+    }
+    
+    void backward(T gradient)
+    {
+        // d(scalar * right)/dright = scalar
+        // No gradient for scalar constant
+        right.backward(gradient * left_val);
+    }
+};
+
+// Expression-Scalar Multiplication (for expressions like expr * 2.0f)
+template<typename T, typename L>
+struct BackMulExpr<T, L, T>
+{
+    L left;        // expression
+    T right;       // scalar constant
+    T left_val;
+    T right_val;
+    
+    T forward()
+    {
+        left_val = left.forward();  // expression value
+        right_val = right;  // scalar value
+        return left_val * right_val;
+    }
+    
+    void backward(T gradient)
+    {
+        // d(left * scalar)/dleft = scalar
+        // No gradient for scalar constant
+        left.backward(gradient * right_val);
     }
 };
 
@@ -171,26 +319,78 @@ struct BackMulExpr
 // Division Expression
 // ============================================================================
 
-template<typename L, typename R>
+template<typename T, typename L, typename R>
 struct BackDivExpr
 {
     L left;
     R right;
-    float left_val;
-    float right_val;
+    T left_val;
+    T right_val;
     
-    float forward()
+    T forward()
     {
-        left_val = getForward(left);
-        right_val = getForward(right);
+        left_val = left.forward();
+        right_val = right.forward();
         return left_val / right_val;
     }
     
-    void backward(float gradient)
+    void backward(T gradient)
     {
         // d(left / right)/dleft = 1/right, d(left / right)/dright = -left/right^2
-        propagateBackward(left, gradient / right_val);
-        propagateBackward(right, -gradient * left_val / (right_val * right_val));
+        left.backward(gradient / right_val);
+        right.backward(-gradient * left_val / (right_val * right_val));
+    }
+};
+
+// ============================================================================
+// Scalar-Expression Division
+// ============================================================================
+
+// Scalar / Expression
+template<typename T, typename R>
+struct BackDivExpr<T, T, R>
+{
+    T left;        // scalar constant
+    R right;       // expression
+    T left_val;
+    T right_val;
+    
+    T forward()
+    {
+        left_val = left;  // scalar value
+        right_val = right.forward();  // expression value
+        return left_val / right_val;
+    }
+    
+    void backward(T gradient)
+    {
+        // d(scalar / right)/dright = -scalar/right^2
+        // No gradient for scalar constant
+        right.backward(-gradient * left_val / (right_val * right_val));
+    }
+};
+
+// Expression / Scalar
+template<typename T, typename L>
+struct BackDivExpr<T, L, T>
+{
+    L left;        // expression
+    T right;       // scalar constant
+    T left_val;
+    T right_val;
+    
+    T forward()
+    {
+        left_val = left.forward();  // expression value
+        right_val = right;  // scalar value
+        return left_val / right_val;
+    }
+    
+    void backward(T gradient)
+    {
+        // d(left / scalar)/dleft = 1/scalar
+        // No gradient for scalar constant
+        left.backward(gradient / right_val);
     }
 };
 
@@ -198,29 +398,29 @@ struct BackDivExpr
 // Power Expression
 // ============================================================================
 
-template<typename L, typename R>
+template<typename T, typename L, typename R>
 struct BackPowExpr
 {
     L base;
     R exponent;
-    float base_val;
-    float exp_val;
-    float result_val;
+    T base_val;
+    T exp_val;
+    T result_val;
     
-    float forward()
+    T forward()
     {
-        base_val = getForward(base);
-        exp_val = getForward(exponent);
+        base_val = base.forward();
+        exp_val = exponent.forward();
         result_val = pow(base_val, exp_val);
         return result_val;
     }
     
-    void backward(float gradient)
+    void backward(T gradient)
     {
         // d(base^exp)/dbase = exp * base^(exp-1)
         // d(base^exp)/dexp = base^exp * log(base)
-        propagateBackward(base, gradient * exp_val * pow(base_val, exp_val - 1.0f));
-        propagateBackward(exponent, gradient * result_val * log(base_val));
+        base.backward(gradient * exp_val * pow(base_val, exp_val - T(1)));
+        exponent.backward(gradient * result_val * log(base_val));
     }
 };
 
@@ -228,20 +428,20 @@ struct BackPowExpr
 // Negation Expression
 // ============================================================================
 
-template<typename E>
+template<typename T, typename E>
 struct BackNegExpr
 {
     E expr;
     
-    float forward()
+    T forward()
     {
-        return -getForward(expr);
+        return -expr.forward();
     }
     
-    void backward(float gradient)
+    void backward(T gradient)
     {
         // d(-expr)/dexpr = -1
-        propagateBackward(expr, -gradient);
+        expr.backward(-gradient);
     }
 };
 
@@ -249,41 +449,41 @@ struct BackNegExpr
 // Trigonometric Functions
 // ============================================================================
 
-template<typename E>
+template<typename T, typename E>
 struct BackSinExpr
 {
     E expr;
-    float expr_val;
+    T expr_val;
     
-    float forward()
+    T forward()
     {
-        expr_val = getForward(expr);
+        expr_val = expr.forward();
         return sin(expr_val);
     }
     
-    void backward(float gradient)
+    void backward(T gradient)
     {
         // d(sin(x))/dx = cos(x)
-        propagateBackward(expr, gradient * cos(expr_val));
+        expr.backward(gradient * cos(expr_val));
     }
 };
 
-template<typename E>
+template<typename T, typename E>
 struct BackCosExpr
 {
     E expr;
-    float expr_val;
+    T expr_val;
     
-    float forward()
+    T forward()
     {
-        expr_val = getForward(expr);
+        expr_val = expr.forward();
         return cos(expr_val);
     }
     
-    void backward(float gradient)
+    void backward(T gradient)
     {
         // d(cos(x))/dx = -sin(x)
-        propagateBackward(expr, gradient * (-sin(expr_val)));
+        expr.backward(gradient * (-sin(expr_val)));
     }
 };
 
@@ -291,42 +491,42 @@ struct BackCosExpr
 // Exponential and Logarithmic Functions
 // ============================================================================
 
-template<typename E>
+template<typename T, typename E>
 struct BackExpExpr
 {
     E expr;
-    float result_val;
+    T result_val;
     
-    float forward()
+    T forward()
     {
-        float expr_val = getForward(expr);
+        T expr_val = expr.forward();
         result_val = exp(expr_val);
         return result_val;
     }
     
-    void backward(float gradient)
+    void backward(T gradient)
     {
         // d(exp(x))/dx = exp(x)
-        propagateBackward(expr, gradient * result_val);
+        expr.backward(gradient * result_val);
     }
 };
 
-template<typename E>
+template<typename T, typename E>
 struct BackLogExpr
 {
     E expr;
-    float expr_val;
+    T expr_val;
     
-    float forward()
+    T forward()
     {
-        expr_val = getForward(expr);
+        expr_val = expr.forward();
         return log(expr_val);
     }
     
-    void backward(float gradient)
+    void backward(T gradient)
     {
         // d(log(x))/dx = 1/x
-        propagateBackward(expr, gradient / expr_val);
+        expr.backward(gradient / expr_val);
     }
 };
 
@@ -334,581 +534,303 @@ struct BackLogExpr
 // Square Root Expression
 // ============================================================================
 
-template<typename E>
+template<typename T, typename E>
 struct BackSqrtExpr
 {
     E expr;
-    float expr_val;
-    float result_val;
+    T expr_val;
+    T result_val;
     
-    float forward()
+    T forward()
     {
-        expr_val = getForward(expr);
+        expr_val = expr.forward();
         result_val = sqrt(expr_val);
         return result_val;
     }
     
-    void backward(float gradient)
+    void backward(T gradient)
     {
         // d(sqrt(x))/dx = 1/(2*sqrt(x))
-        propagateBackward(expr, gradient / (2.0f * result_val));
+        expr.backward(gradient / (T(2) * result_val));
     }
 };
-
-// ============================================================================
-// Helper Functions for Forward Pass
-// =============================================================================
-
-// Get forward value from variable
-float getForward(VariableExpr var_expr)
-{
-    return var_expr.forward();
-}
-
-// Get forward value from different expression types
-template<typename L, typename R>
-float getForward(BackAddExpr<L, R> expr)
-{
-    return expr.forward();
-}
-
-template<typename L, typename R>
-float getForward(BackSubExpr<L, R> expr)
-{
-    return expr.forward();
-}
-
-template<typename L, typename R>
-float getForward(BackMulExpr<L, R> expr)
-{
-    return expr.forward();
-}
-
-template<typename L, typename R>
-float getForward(BackDivExpr<L, R> expr)
-{
-    return expr.forward();
-}
-
-template<typename L, typename R>
-float getForward(BackPowExpr<L, R> expr)
-{
-    return expr.forward();
-}
-
-template<typename E>
-float getForward(BackNegExpr<E> expr)
-{
-    return expr.forward();
-}
-
-template<typename E>
-float getForward(BackSinExpr<E> expr)
-{
-    return expr.forward();
-}
-
-template<typename E>
-float getForward(BackCosExpr<E> expr)
-{
-    return expr.forward();
-}
-
-template<typename E>
-float getForward(BackExpExpr<E> expr)
-{
-    return expr.forward();
-}
-
-template<typename E>
-float getForward(BackLogExpr<E> expr)
-{
-    return expr.forward();
-}
-
-template<typename E>
-float getForward(BackSqrtExpr<E> expr)
-{
-    return expr.forward();
-}
-
-// Get forward value from float constant
-float getForward(float val)
-{
-    return val;
-}
-
-// ============================================================================
-// Helper Functions for Backward Pass
-// ============================================================================
-
-// Propagate gradient to variable
-void propagateBackward(VariableExpr var_expr, float gradient)
-{
-    var_expr.backward(gradient);
-}
-
-// Propagate gradient to different expression types
-template<typename L, typename R>
-void propagateBackward(BackAddExpr<L, R> expr, float gradient)
-{
-    expr.backward(gradient);
-}
-
-template<typename L, typename R>
-void propagateBackward(BackSubExpr<L, R> expr, float gradient)
-{
-    expr.backward(gradient);
-}
-
-template<typename L, typename R>
-void propagateBackward(BackMulExpr<L, R> expr, float gradient)
-{
-    expr.backward(gradient);
-}
-
-template<typename L, typename R>
-void propagateBackward(BackDivExpr<L, R> expr, float gradient)
-{
-    expr.backward(gradient);
-}
-
-template<typename L, typename R>
-void propagateBackward(BackPowExpr<L, R> expr, float gradient)
-{
-    expr.backward(gradient);
-}
-
-template<typename E>
-void propagateBackward(BackNegExpr<E> expr, float gradient)
-{
-    expr.backward(gradient);
-}
-
-template<typename E>
-void propagateBackward(BackSinExpr<E> expr, float gradient)
-{
-    expr.backward(gradient);
-}
-
-template<typename E>
-void propagateBackward(BackCosExpr<E> expr, float gradient)
-{
-    expr.backward(gradient);
-}
-
-template<typename E>
-void propagateBackward(BackExpExpr<E> expr, float gradient)
-{
-    expr.backward(gradient);
-}
-
-template<typename E>
-void propagateBackward(BackLogExpr<E> expr, float gradient)
-{
-    expr.backward(gradient);
-}
-
-template<typename E>
-void propagateBackward(BackSqrtExpr<E> expr, float gradient)
-{
-    expr.backward(gradient);
-}
-
-// Propagate gradient to float constant (no-op)
-void propagateBackward(float val, float gradient)
-{
-    // Constants don't accumulate gradients
-}
-
-// ============================================================================
-// Expression Factory Functions
-// ============================================================================
-
-// Create variable expression
-VariableExpr makeVariableExpr(Variable var)
-{
-    VariableExpr expr;
-    expr.var = var;
-    return expr;
-}
-
-// Create binary operation expressions
-template<typename L, typename R>
-BackAddExpr<L, R> makeBackAddExpr(L left, R right)
-{
-    BackAddExpr<L, R> expr;
-    expr.left = left;
-    expr.right = right;
-    return expr;
-}
-
-template<typename L, typename R>
-BackSubExpr<L, R> makeBackSubExpr(L left, R right)
-{
-    BackSubExpr<L, R> expr;
-    expr.left = left;
-    expr.right = right;
-    return expr;
-}
-
-template<typename L, typename R>
-BackMulExpr<L, R> makeBackMulExpr(L left, R right)
-{
-    BackMulExpr<L, R> expr;
-    expr.left = left;
-    expr.right = right;
-    return expr;
-}
-
-template<typename L, typename R>
-BackDivExpr<L, R> makeBackDivExpr(L left, R right)
-{
-    BackDivExpr<L, R> expr;
-    expr.left = left;
-    expr.right = right;
-    return expr;
-}
-
-template<typename L, typename R>
-BackPowExpr<L, R> makeBackPowExpr(L base, R exponent)
-{
-    BackPowExpr<L, R> expr;
-    expr.base = base;
-    expr.exponent = exponent;
-    return expr;
-}
-
-// Create unary operation expressions
-template<typename E>
-BackNegExpr<E> makeBackNegExpr(E expr)
-{
-    BackNegExpr<E> result;
-    result.expr = expr;
-    return result;
-}
-
-template<typename E>
-BackSinExpr<E> makeBackSinExpr(E expr)
-{
-    BackSinExpr<E> result;
-    result.expr = expr;
-    return result;
-}
-
-template<typename E>
-BackCosExpr<E> makeBackCosExpr(E expr)
-{
-    BackCosExpr<E> result;
-    result.expr = expr;
-    return result;
-}
-
-template<typename E>
-BackExpExpr<E> makeBackExpExpr(E expr)
-{
-    BackExpExpr<E> result;
-    result.expr = expr;
-    return result;
-}
-
-template<typename E>
-BackLogExpr<E> makeBackLogExpr(E expr)
-{
-    BackLogExpr<E> result;
-    result.expr = expr;
-    return result;
-}
-
-template<typename E>
-BackSqrtExpr<E> makeBackSqrtExpr(E expr)
-{
-    BackSqrtExpr<E> result;
-    result.expr = expr;
-    return result;
-}
 
 // ============================================================================
 // High-Level API Functions
 // ============================================================================
 
 // Create a variable
-Variable variable(float value)
+template<typename T>
+Variable<T> variable(T value)
 {
-    return Variable::makeVariable(value);
+    return Variable<T>::makeVariable(value);
 }
 
-// Create a constant (just returns the float value)
-float constant(float value)
+// Create a constant (just returns the typed value)
+template<typename T>
+T constant(T value)
 {
     return value;
 }
 
+// Helper function to create VariableExpr
+template<typename T>
+VariableExpr<T> makeVariableExpr(Variable<T> var)
+{
+    VariableExpr<T> expr;
+    expr.var = var;
+    return expr;
+}
+
 // Binary operations
-template<typename L, typename R>
-BackAddExpr<L, R> add(L left, R right)
+template<typename T, typename L, typename R>
+BackAddExpr<T, L, R> add(L left, R right)
 {
-    return makeBackAddExpr(left, right);
+    BackAddExpr<T, L, R> expr;
+    expr.left = left;
+    expr.right = right;
+    return expr;
 }
 
-template<typename L, typename R>
-BackSubExpr<L, R> subtract(L left, R right)
+template<typename T, typename L, typename R>
+BackSubExpr<T, L, R> subtract(L left, R right)
 {
-    return makeBackSubExpr(left, right);
+    BackSubExpr<T, L, R> expr;
+    expr.left = left;
+    expr.right = right;
+    return expr;
 }
 
-template<typename L, typename R>
-BackMulExpr<L, R> multiply(L left, R right)
+template<typename T, typename L, typename R>
+BackMulExpr<T, L, R> multiply(L left, R right)
 {
-    return makeBackMulExpr(left, right);
+    BackMulExpr<T, L, R> expr;
+    expr.left = left;
+    expr.right = right;
+    return expr;
 }
 
-template<typename L, typename R>
-BackDivExpr<L, R> divide(L left, R right)
+template<typename T, typename L, typename R>
+BackDivExpr<T, L, R> divide(L left, R right)
 {
-    return makeBackDivExpr(left, right);
+    BackDivExpr<T, L, R> expr;
+    expr.left = left;
+    expr.right = right;
+    return expr;
 }
 
-template<typename L, typename R>
-BackPowExpr<L, R> power(L base, R exponent)
+template<typename T, typename L, typename R>
+BackPowExpr<T, L, R> power(L base, R exponent)
 {
-    return makeBackPowExpr(base, exponent);
+    BackPowExpr<T, L, R> expr;
+    expr.base = base;
+    expr.exponent = exponent;
+    return expr;
 }
 
 // Unary operations
-template<typename E>
-BackNegExpr<E> negate(E expr)
+template<typename T, typename E>
+BackNegExpr<T, E> negate(E expr)
 {
-    return makeBackNegExpr(expr);
+    BackNegExpr<T, E> result;
+    result.expr = expr;
+    return result;
 }
 
-template<typename E>
-BackSinExpr<E> sinExpr(E expr)
+template<typename T, typename E>
+BackSinExpr<T, E> sinExpr(E expr)
 {
-    return makeBackSinExpr(expr);
+    BackSinExpr<T, E> result;
+    result.expr = expr;
+    return result;
 }
 
-template<typename E>
-BackCosExpr<E> cosExpr(E expr)
+template<typename T, typename E>
+BackCosExpr<T, E> cosExpr(E expr)
 {
-    return makeBackCosExpr(expr);
+    BackCosExpr<T, E> result;
+    result.expr = expr;
+    return result;
 }
 
-template<typename E>
-BackExpExpr<E> expExpr(E expr)
+template<typename T, typename E>
+BackExpExpr<T, E> expExpr(E expr)
 {
-    return makeBackExpExpr(expr);
+    BackExpExpr<T, E> result;
+    result.expr = expr;
+    return result;
 }
 
-template<typename E>
-BackLogExpr<E> logExpr(E expr)
+template<typename T, typename E>
+BackLogExpr<T, E> logExpr(E expr)
 {
-    return makeBackLogExpr(expr);
+    BackLogExpr<T, E> result;
+    result.expr = expr;
+    return result;
 }
 
-template<typename E>
-BackSqrtExpr<E> sqrtExpr(E expr)
+template<typename T, typename E>
+BackSqrtExpr<T, E> sqrtExpr(E expr)
 {
-    return makeBackSqrtExpr(expr);
+    BackSqrtExpr<T, E> result;
+    result.expr = expr;
+    return result;
 }
 
 // ============================================================================
 // Computation Functions
 // ============================================================================
 
-// Forward pass: compute function value
-float forward(VariableExpr var_expr)
-{
-    return var_expr.forward();
+// Template specializations for reset functions
+#define SPECIALIZE_RESET(T) \
+template<> \
+void reset_variables<T>() \
+{ \
+    for (int i = 0; i < g_variable_count_##T; i++) \
+    { \
+        g_gradients_##T[i] = T(0); \
+    } \
+    g_variable_count_##T = 0; \
 }
 
-template<typename L, typename R>
-float forward(BackAddExpr<L, R> expr)
-{
-    return expr.forward();
+// Reset all variables for a specific type
+template<typename T>
+void reset_variables();
+
+SPECIALIZE_RESET(float)
+SPECIALIZE_RESET(double)
+SPECIALIZE_RESET(half)
+SPECIALIZE_RESET(int)
+
+// Template specializations for compute_gradients functions
+#define SPECIALIZE_COMPUTE_GRADIENTS(T) \
+template<> \
+T compute_gradients<T>(VariableExpr<T> var_expr) \
+{ \
+    for (int i = 0; i < g_variable_count_##T; i++) \
+    { \
+        g_gradients_##T[i] = T(0); \
+    } \
+    T result = var_expr.forward(); \
+    var_expr.backward(T(1)); \
+    return result; \
 }
 
-template<typename L, typename R>
-float forward(BackSubExpr<L, R> expr)
-{
-    return expr.forward();
-}
+// Combined forward and backward pass for different expression types
+template<typename T>
+T compute_gradients(VariableExpr<T> var_expr);
 
-template<typename L, typename R>
-float forward(BackMulExpr<L, R> expr)
+template<typename T, typename L, typename R>
+T compute_gradients(BackAddExpr<T, L, R> expr)
 {
-    return expr.forward();
-}
-
-template<typename L, typename R>
-float forward(BackDivExpr<L, R> expr)
-{
-    return expr.forward();
-}
-
-template<typename L, typename R>
-float forward(BackPowExpr<L, R> expr)
-{
-    return expr.forward();
-}
-
-template<typename E>
-float forward(BackNegExpr<E> expr)
-{
-    return expr.forward();
-}
-
-template<typename E>
-float forward(BackSinExpr<E> expr)
-{
-    return expr.forward();
-}
-
-template<typename E>
-float forward(BackCosExpr<E> expr)
-{
-    return expr.forward();
-}
-
-template<typename E>
-float forward(BackExpExpr<E> expr)
-{
-    return expr.forward();
-}
-
-template<typename E>
-float forward(BackLogExpr<E> expr)
-{
-    return expr.forward();
-}
-
-template<typename E>
-float forward(BackSqrtExpr<E> expr)
-{
-    return expr.forward();
-}
-
-float forward(float val)
-{
-    return val;
-}
-
-// Backward pass: compute gradients
-void backward(VariableExpr var_expr, float gradient = 1.0f)
-{
-    var_expr.backward(gradient);
-}
-
-template<typename L, typename R>
-void backward(BackAddExpr<L, R> expr, float gradient = 1.0f)
-{
-    expr.backward(gradient);
-}
-
-template<typename L, typename R>
-void backward(BackSubExpr<L, R> expr, float gradient = 1.0f)
-{
-    expr.backward(gradient);
-}
-
-template<typename L, typename R>
-void backward(BackMulExpr<L, R> expr, float gradient = 1.0f)
-{
-    expr.backward(gradient);
-}
-
-template<typename L, typename R>
-void backward(BackDivExpr<L, R> expr, float gradient = 1.0f)
-{
-    expr.backward(gradient);
-}
-
-template<typename L, typename R>
-void backward(BackPowExpr<L, R> expr, float gradient = 1.0f)
-{
-    expr.backward(gradient);
-}
-
-template<typename E>
-void backward(BackNegExpr<E> expr, float gradient = 1.0f)
-{
-    expr.backward(gradient);
-}
-
-template<typename E>
-void backward(BackSinExpr<E> expr, float gradient = 1.0f)
-{
-    expr.backward(gradient);
-}
-
-template<typename E>
-void backward(BackCosExpr<E> expr, float gradient = 1.0f)
-{
-    expr.backward(gradient);
-}
-
-template<typename E>
-void backward(BackExpExpr<E> expr, float gradient = 1.0f)
-{
-    expr.backward(gradient);
-}
-
-template<typename E>
-void backward(BackLogExpr<E> expr, float gradient = 1.0f)
-{
-    expr.backward(gradient);
-}
-
-template<typename E>
-void backward(BackSqrtExpr<E> expr, float gradient = 1.0f)
-{
-    expr.backward(gradient);
-}
-
-// Combined forward and backward pass
-template<typename E>
-float compute_gradients(BackwardExpr<E> expr)
-{
-    // Zero all gradients
-    for (int i = 0; i < g_variable_count; i++)
+    // Zero all gradients for type T - simplified for float for now
+    for (int i = 0; i < g_variable_count_float; i++)
     {
-        g_gradients[i] = 0.0f;
+        g_gradients_float[i] = 0.0f;
     }
     
     // Forward pass
-    float result = expr.forward();
+    T result = expr.forward();
     
     // Backward pass (starting with gradient = 1.0 for the output)
-    expr.backward(1.0f);
+    expr.backward(T(1));
     
     return result;
 }
 
-float compute_gradients(VariableExpr var_expr)
+template<typename T, typename L, typename R>
+T compute_gradients(BackSubExpr<T, L, R> expr)
 {
-    // Zero all gradients
-    for (int i = 0; i < g_variable_count; i++)
-    {
-        g_gradients[i] = 0.0f;
-    }
-    
-    // Forward pass
-    float result = var_expr.forward();
-    
-    // Backward pass
-    var_expr.backward(1.0f);
-    
+    for (int i = 0; i < g_variable_count_float; i++) { g_gradients_float[i] = 0.0f; }
+    T result = expr.forward();
+    expr.backward(T(1));
     return result;
 }
 
-// Reset the variable counter (for new computations)
-void reset_variables()
+template<typename T, typename L, typename R>
+T compute_gradients(BackMulExpr<T, L, R> expr)
 {
-    g_variable_count = 0;
-    for (int i = 0; i < MAX_VARIABLES; i++)
-    {
-        g_gradients[i] = 0.0f;
-    }
+    for (int i = 0; i < g_variable_count_float; i++) { g_gradients_float[i] = 0.0f; }
+    T result = expr.forward();
+    expr.backward(T(1));
+    return result;
 }
+
+template<typename T, typename L, typename R>
+T compute_gradients(BackDivExpr<T, L, R> expr)
+{
+    for (int i = 0; i < g_variable_count_float; i++) { g_gradients_float[i] = 0.0f; }
+    T result = expr.forward();
+    expr.backward(T(1));
+    return result;
+}
+
+template<typename T, typename L, typename R>  
+T compute_gradients(BackPowExpr<T, L, R> expr)
+{
+    for (int i = 0; i < g_variable_count_float; i++) { g_gradients_float[i] = 0.0f; }
+    T result = expr.forward();
+    expr.backward(T(1));
+    return result;
+}
+
+template<typename T, typename E>
+T compute_gradients(BackNegExpr<T, E> expr)
+{
+    for (int i = 0; i < g_variable_count_float; i++) { g_gradients_float[i] = 0.0f; }
+    T result = expr.forward();
+    expr.backward(T(1));
+    return result;
+}
+
+template<typename T, typename E>
+T compute_gradients(BackSinExpr<T, E> expr)
+{
+    for (int i = 0; i < g_variable_count_float; i++) { g_gradients_float[i] = 0.0f; }
+    T result = expr.forward();
+    expr.backward(T(1));
+    return result;
+}
+
+template<typename T, typename E>
+T compute_gradients(BackCosExpr<T, E> expr)
+{
+    for (int i = 0; i < g_variable_count_float; i++) { g_gradients_float[i] = 0.0f; }
+    T result = expr.forward();
+    expr.backward(T(1));
+    return result;
+}
+
+template<typename T, typename E>
+T compute_gradients(BackExpExpr<T, E> expr)
+{
+    for (int i = 0; i < g_variable_count_float; i++) { g_gradients_float[i] = 0.0f; }
+    T result = expr.forward();
+    expr.backward(T(1));
+    return result;
+}
+
+template<typename T, typename E>
+T compute_gradients(BackLogExpr<T, E> expr)
+{
+    for (int i = 0; i < g_variable_count_float; i++) { g_gradients_float[i] = 0.0f; }
+    T result = expr.forward();
+    expr.backward(T(1));
+    return result;
+}
+
+template<typename T, typename E>
+T compute_gradients(BackSqrtExpr<T, E> expr)
+{
+    for (int i = 0; i < g_variable_count_float; i++) { g_gradients_float[i] = 0.0f; }
+    T result = expr.forward();
+    expr.backward(T(1));
+    return result;
+}
+
+SPECIALIZE_COMPUTE_GRADIENTS(float)
+SPECIALIZE_COMPUTE_GRADIENTS(double)
+SPECIALIZE_COMPUTE_GRADIENTS(half)
+SPECIALIZE_COMPUTE_GRADIENTS(int)
 
 #endif // BACKWARD_AD_HLSL
