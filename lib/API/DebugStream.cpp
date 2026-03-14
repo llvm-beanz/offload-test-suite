@@ -33,8 +33,8 @@ llvm::Error offloadtest::PrintDebugStream(const Buffer &Buffer,
                                    "No string table part found in DXContainer");
   const uint32_t *const Start =
       reinterpret_cast<const uint32_t *>(Buffer.Data[0].get());
-  size_t const NumEntries = Buffer.Size / sizeof(uint32_t);
   const uint32_t *Data = Start;
+  size_t const NumEntries = *Data++ / sizeof(uint32_t);
   const uint32_t *const End = Start + NumEntries;
 
   // Must be able to read at least the wave count, string offset, and arg size!
