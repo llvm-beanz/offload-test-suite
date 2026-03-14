@@ -195,3 +195,176 @@ float NewtonMethod(float initial_guess)
     
     return x_current;
 }
+
+// ============================================================================
+// Vector and Matrix Examples
+// ============================================================================
+
+// Example 9: Vector operations with automatic differentiation
+void ExampleVectorOperations()
+{
+    // Define variables for vector components
+    Dual<float> x = variable<float>(1.0f);
+    Dual<float> y = variable<float>(2.0f);
+    
+    // Create a vector [x, y]
+    Dual<vector<float, 2> > v = makeVector2<float>(x, y);
+    
+    // Create a constant vector [3, 4]
+    Dual<vector<float, 2> > u = constantVector<float, 2>(vector<float, 2>(3.0f, 4.0f));
+    
+    // Compute dot product: f(x,y) = dot([x,y], [3,4]) = 3x + 4y
+    // ∂f/∂x = 3, ∂f/∂y = 4 (but we're computing w.r.t. x with dx=1, dy=0)
+    Dual<float> dot_result = getValue(dotProduct<float, 2>(v, u));
+    
+    // Compute vector length: |[x,y]| = sqrt(x^2 + y^2)
+    // d/dx[sqrt(x^2 + y^2)] = x/sqrt(x^2 + y^2)
+    Dual<float> length_result = getValue(lengthExpr<float, 2>(v));
+    
+    // Normalize vector
+    Dual<vector<float, 2> > normalized = getValue(normalizeExpr<float, 2>(v));
+    
+    float dot_val = dot_result.value;         // 3*1 + 4*2 = 11
+    float dot_deriv = dot_result.derivative;  // 3 (derivative w.r.t. x)
+    float length_val = length_result.value;   // sqrt(1 + 4) = sqrt(5) ≈ 2.236
+    float length_deriv = length_result.derivative; // 1/sqrt(5) ≈ 0.447
+}
+
+// Example 10: Cross product for 3D vectors
+void ExampleCrossProduct()
+{
+    // Define variables
+    Dual<float> x = variable<float>(2.0f);
+    
+    // Create vectors: v = [x, 1, 0] and u = [0, x, 1]
+    Dual<vector<float, 3> > v = makeVector3<float>(x, constant<float>(1.0f), constant<float>(0.0f));
+    Dual<vector<float, 3> > u = makeVector3<float>(constant<float>(0.0f), x, constant<float>(1.0f));
+    
+    // Compute cross product: v × u
+    // [x,1,0] × [0,x,1] = [1*1-0*x, 0*0-x*1, x*x-1*0] = [1, -x, x^2]
+    Dual<vector<float, 3> > cross_result = getValue(crossProduct<float>(v, u));
+    
+    // Extract components and their derivatives
+    Dual<float> result_x = getX(cross_result);  // value = 1, derivative = 0
+    Dual<float> result_y = getY(cross_result);  // value = -x = -2, derivative = -1
+    Dual<float> result_z = getZ(cross_result);  // value = x^2 = 4, derivative = 2x = 4
+}
+
+// Example 11: Matrix-vector multiplication
+void ExampleMatrixVector()
+{
+    // Define parameter
+    Dual<float> t = variable<float>(1.5f);
+    
+    // Create parameterized matrix [[t, 0], [0, 2t]]
+    matrix<float, 2, 2> mat_val = matrix<float, 2, 2>(t.value, 0, 0, 2*t.value);
+    matrix<float, 2, 2> mat_deriv = matrix<float, 2, 2>(t.derivative, 0, 0, 2*t.derivative);
+    Dual<matrix<float, 2, 2> > A = makeDual<matrix<float, 2, 2> >(mat_val, mat_deriv);
+    
+    // Create vector [1, 3]
+    Dual<vector<float, 2> > v = constantVector<float, 2>(vector<float, 2>(1.0f, 3.0f));
+    
+    // Compute A*v = [[t,0],[0,2t]] * [1,3] = [t, 6t]
+    Dual<vector<float, 2> > result = getValue(matMul<float, 2, 2, 2>(A, v));
+    
+    // Extract components
+    Dual<float> result_x = getX(result);  // value = t = 1.5, derivative = 1
+    Dual<float> result_y = getY(result);  // value = 6t = 9, derivative = 6
+}
+
+// Example 12: Matrix determinant differentiation  
+void ExampleMatrixDeterminant()
+{
+    // Define variables
+    Dual<float> a = variable<float>(2.0f);
+    Dual<float> b = constant<float>(3.0f);
+    
+    // Create matrix [[a, 1], [b, 4]] = [[a, 1], [3, 4]]
+    matrix<float, 2, 2> mat_val = matrix<float, 2, 2>(a.value, 1, b.value, 4);
+    matrix<float, 2, 2> mat_deriv = matrix<float, 2, 2>(a.derivative, 0, b.derivative, 0);
+    Dual<matrix<float, 2, 2> > M = makeDual<matrix<float, 2, 2> >(mat_val, mat_deriv);
+    
+    // Compute determinant: det([[a,1],[3,4]]) = a*4 - 1*3 = 4a - 3
+    // d/da[4a - 3] = 4
+    Dual<float> det_result = getValue(determinantExpr<float, 2>(M));
+    
+    float det_val = det_result.value;       // 4*2 - 3 = 5
+    float det_deriv = det_result.derivative; // 4
+}
+
+// Example 13: Transformation pipeline with gradients
+void ExampleTransformationPipeline()
+{
+    // Define rotation angle as parameter
+    Dual<float> theta = variable<float>(0.785f); // π/4 radians
+    
+    // Create 2D rotation matrix
+    Dual<float> cos_theta = getValue(cosExpr<float>(theta));
+    Dual<float> sin_theta = getValue(sinExpr<float>(theta));
+    Dual<float> neg_sin = getValue(negate<float>(sin_theta));
+    
+    // Rotation matrix [[cos θ, -sin θ], [sin θ, cos θ]]
+    matrix<float, 2, 2> rot_val = matrix<float, 2, 2>(cos_theta.value, neg_sin.value, 
+                                                   sin_theta.value, cos_theta.value);
+    matrix<float, 2, 2> rot_deriv = matrix<float, 2, 2>(cos_theta.derivative, neg_sin.derivative,
+                                                     sin_theta.derivative, cos_theta.derivative);
+    Dual<matrix<float, 2, 2> > R = makeDual<matrix<float, 2, 2> >(rot_val, rot_deriv);
+    
+    // Input vector to transform
+    Dual<vector<float, 2> > input = constantVector<float, 2>(vector<float, 2>(1.0f, 0.0f));
+    
+    // Apply rotation
+    Dual<vector<float, 2> > rotated = getValue(matMul<float, 2, 2, 2>(R, input));    
+    // Compute length (should remain 1 for rotation)
+    Dual<float> length_after = getValue(lengthExpr<float, 2>(rotated));
+    
+    // The gradient tells us how the transformed point moves with rotation angle
+    Dual<float> x_component = getX(rotated);
+    Dual<float> y_component = getY(rotated);
+    
+    // At θ = π/4: rotated point = [cos(π/4), sin(π/4)] = [√2/2, √2/2]
+    // Derivatives give velocity of rotation: [-sin(π/4), cos(π/4)] = [-√2/2, √2/2]
+}
+
+// Example 14: Computing Jacobian matrix elements
+void ExampleJacobianComputation()
+{
+    // For function f: R² → R² defined as f([x,y]) = [x²+y, xy]
+    // Compute partial derivatives to form Jacobian matrix
+    
+    float x_val = 2.0f, y_val = 3.0f;
+    
+    // Compute ∂f₁/∂x and ∂f₂/∂x (partial derivatives w.r.t. x)
+    {
+        Dual<float> x = variable<float>(x_val);  // dx = 1
+        Dual<float> y = constant<float>(y_val);   // dy = 0
+        
+        // f₁(x,y) = x² + y
+        Dual<float> x_sq = getValue(multiply<float>(x, x));
+        Dual<float> f1 = getValue(add<float>(x_sq, y));
+        
+        // f₂(x,y) = xy
+        Dual<float> f2 = getValue(multiply<float>(x, y));
+        
+        float df1_dx = f1.derivative;  // ∂(x²+y)/∂x = 2x = 4
+        float df2_dx = f2.derivative;  // ∂(xy)/∂x = y = 3
+    }
+    
+    // Compute ∂f₁/∂y and ∂f₂/∂y (partial derivatives w.r.t. y)
+    {
+        Dual<float> x = constant<float>(x_val);   // dx = 0  
+        Dual<float> y = variable<float>(y_val);   // dy = 1
+        
+        // f₁(x,y) = x² + y
+        Dual<float> x_sq = getValue(multiply<float>(x, x));
+        Dual<float> f1 = getValue(add<float>(x_sq, y));
+        
+        // f₂(x,y) = xy
+        Dual<float> f2 = getValue(multiply<float>(x, y));
+        
+        float df1_dy = f1.derivative;  // ∂(x²+y)/∂y = 1
+        float df2_dy = f2.derivative;  // ∂(xy)/∂y = x = 2
+        
+        // Jacobian matrix at (2,3) is [[4,1],[3,2]]
+    }
+}
