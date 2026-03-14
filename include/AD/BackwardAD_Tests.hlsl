@@ -26,17 +26,18 @@ BackTestResult TestBackwardQuadratic()
     BackTestResult result;
     result.tolerance = 1e-5f;
     
-    reset_variables<float>();
+    GradientContext<float> context; 
+    context.variable_count = 0;
     
     // f(x) = x^2, f'(x) = 2x
     // At x = 3: f(3) = 9, f'(3) = 6
-    Variable<float> x = variable<float>(3.0f);
+    Variable<float> x = variable<float>(context, 3.0f);
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
     
     BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > f = multiply<float>(x_expr, x_expr);
     
-    float function_value = compute_gradients<float>(f);
-    float gradient_value = x.gradient();
+    float function_value = compute_gradients<float>(context, f);
+    float gradient_value = x.gradient(context);
     
     result.expected_value = 9.0f;
     result.actual_value = function_value;
@@ -55,20 +56,21 @@ BackTestResult TestBackwardAddition()
     BackTestResult result;
     result.tolerance = 1e-5f;
     
-    reset_variables<float>();
+    GradientContext<float> context;
+    context.variable_count = 0;
     
     // f(x,y) = x + y, ∂f/∂x = 1, ∂f/∂y = 1
-    Variable<float> x = variable<float>(2.0f);
-    Variable<float> y = variable<float>(3.0f);
+    Variable<float> x = variable<float>(context, 2.0f);
+    Variable<float> y = variable<float>(context, 3.0f);
     
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
     VariableExpr<float> y_expr = makeVariableExpr<float>(y);
     
     BackAddExpr<float, VariableExpr<float>, VariableExpr<float> > f = add<float>(x_expr, y_expr);
     
-    float function_value = compute_gradients<float>(f);
-    float x_gradient = x.gradient();
-    float y_gradient = y.gradient();
+    float function_value = compute_gradients<float>(context, f);
+    float x_gradient = x.gradient(context);
+    float y_gradient = y.gradient(context);
     
     result.expected_value = 5.0f;  // 2 + 3
     result.actual_value = function_value;
@@ -88,20 +90,21 @@ BackTestResult TestBackwardMultiplication()
     BackTestResult result;
     result.tolerance = 1e-5f;
     
-    reset_variables<float>();
+    GradientContext<float> context;
+    context.variable_count = 0;
     
     // f(x,y) = x * y, ∂f/∂x = y, ∂f/∂y = x
-    Variable<float> x = variable<float>(4.0f);
-    Variable<float> y = variable<float>(5.0f);
+    Variable<float> x = variable<float>(context, 4.0f);
+    Variable<float> y = variable<float>(context, 5.0f);
     
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
     VariableExpr<float> y_expr = makeVariableExpr<float>(y);
     
     BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > f = multiply<float>(x_expr, y_expr);
     
-    float function_value = compute_gradients<float>(f);
-    float x_gradient = x.gradient();
-    float y_gradient = y.gradient();
+    float function_value = compute_gradients<float>(context, f);
+    float x_gradient = x.gradient(context);
+    float y_gradient = y.gradient(context);
     
     result.expected_value = 20.0f;  // 4 * 5
     result.actual_value = function_value;
@@ -121,20 +124,21 @@ BackTestResult TestBackwardDivision()
     BackTestResult result;
     result.tolerance = 1e-5f;
     
-    reset_variables<float>();
+    GradientContext<float> context;
+    context.variable_count = 0;
     
     // f(x,y) = x / y, ∂f/∂x = 1/y, ∂f/∂y = -x/y^2
-    Variable<float> x = variable<float>(8.0f);
-    Variable<float> y = variable<float>(2.0f);
+    Variable<float> x = variable<float>(context, 8.0f);
+    Variable<float> y = variable<float>(context, 2.0f);
     
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
     VariableExpr<float> y_expr = makeVariableExpr<float>(y);
     
     BackDivExpr<float, VariableExpr<float>, VariableExpr<float> > f = divide<float>(x_expr, y_expr);
     
-    float function_value = compute_gradients<float>(f);
-    float x_gradient = x.gradient();
-    float y_gradient = y.gradient();
+    float function_value = compute_gradients<float>(context, f);
+    float x_gradient = x.gradient(context);
+    float y_gradient = y.gradient(context);
     
     result.expected_value = 4.0f;    // 8 / 2
     result.actual_value = function_value;
@@ -157,17 +161,18 @@ BackTestResult TestBackwardSine()
     BackTestResult result;
     result.tolerance = 1e-4f;
     
-    reset_variables<float>();
+    GradientContext<float> context;
+    context.variable_count = 0;
     
     // f(x) = sin(x), f'(x) = cos(x)
     // At x = 0: f(0) = 0, f'(0) = 1
-    Variable<float> x = variable<float>(0.0f);
+    Variable<float> x = variable<float>(context, 0.0f);
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
     
     BackSinExpr<float, VariableExpr<float> > f = sinExpr<float>(x_expr);
     
-    float function_value = compute_gradients<float>(f);
-    float gradient_value = x.gradient();
+    float function_value = compute_gradients<float>(context, f);
+    float gradient_value = x.gradient(context);
     
     result.expected_value = 0.0f;  // sin(0) = 0
     result.actual_value = function_value;
@@ -186,17 +191,18 @@ BackTestResult TestBackwardExponential()
     BackTestResult result;
     result.tolerance = 1e-4f;
     
-    reset_variables<float>();
+    GradientContext<float> context;
+    context.variable_count = 0;
     
     // f(x) = exp(x), f'(x) = exp(x)
     // At x = 0: f(0) = 1, f'(0) = 1
-    Variable<float> x = variable<float>(0.0f);
+    Variable<float> x = variable<float>(context, 0.0f);
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
     
     BackExpExpr<float, VariableExpr<float> > f = expExpr<float>(x_expr);
     
-    float function_value = compute_gradients<float>(f);
-    float gradient_value = x.gradient();
+    float function_value = compute_gradients<float>(context, f);
+    float gradient_value = x.gradient(context);
     
     result.expected_value = 1.0f;  // exp(0) = 1
     result.actual_value = function_value;
@@ -215,17 +221,18 @@ BackTestResult TestBackwardLogarithm()
     BackTestResult result;
     result.tolerance = 1e-4f;
     
-    reset_variables<float>();
+    GradientContext<float> context;
+    context.variable_count = 0;
     
     // f(x) = log(x), f'(x) = 1/x
     // At x = 1: f(1) = 0, f'(1) = 1
-    Variable<float> x = variable<float>(1.0f);
+    Variable<float> x = variable<float>(context, 1.0f);
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
     
     BackLogExpr<float, VariableExpr<float> > f = logExpr<float>(x_expr);
     
-    float function_value = compute_gradients<float>(f);
-    float gradient_value = x.gradient();
+    float function_value = compute_gradients<float>(context, f);
+    float gradient_value = x.gradient(context);
     
     result.expected_value = 0.0f;  // log(1) = 0
     result.actual_value = function_value;
@@ -244,18 +251,19 @@ BackTestResult TestBackwardChainRule()
     BackTestResult result;
     result.tolerance = 1e-4f;
     
-    reset_variables<float>();
+    GradientContext<float> context;
+    context.variable_count = 0;
     
     // f(x) = sin(x^2), f'(x) = cos(x^2) * 2x
     // At x = 0: f(0) = sin(0) = 0, f'(0) = cos(0) * 0 = 0
-    Variable<float> x = variable<float>(0.0f);
+    Variable<float> x = variable<float>(context, 0.0f);
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
     
     BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > x_squared = multiply<float>(x_expr, x_expr);
     BackSinExpr<float, BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > > f = sinExpr<float>(x_squared);
     
-    float function_value = compute_gradients<float>(f);
-    float gradient_value = x.gradient();
+    float function_value = compute_gradients<float>(context, f);
+    float gradient_value = x.gradient(context);
     
     result.expected_value = 0.0f;  // sin(0) = 0
     result.actual_value = function_value;
@@ -274,18 +282,19 @@ BackTestResult TestBackwardProductRule()
     BackTestResult result;
     result.tolerance = 1e-4f;
     
-    reset_variables<float>();
+    GradientContext<float> context;
+    context.variable_count = 0;
     
     // f(x) = x * sin(x), f'(x) = sin(x) + x * cos(x)
     // At x = 0: f(0) = 0, f'(0) = sin(0) + 0*cos(0) = 0
-    Variable<float> x = variable<float>(0.0f);
+    Variable<float> x = variable<float>(context, 0.0f);
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
     
     BackSinExpr<float, VariableExpr<float> > sin_x = sinExpr<float>(x_expr);
     BackMulExpr<float, VariableExpr<float>, BackSinExpr<float, VariableExpr<float> > > f = multiply<float>(x_expr, sin_x);
     
-    float function_value = compute_gradients<float>(f);
-    float gradient_value = x.gradient();
+    float function_value = compute_gradients<float>(context, f);
+    float gradient_value = x.gradient(context);
     
     result.expected_value = 0.0f;  // 0 * sin(0) = 0
     result.actual_value = function_value;
@@ -304,13 +313,14 @@ BackTestResult TestBackwardComplexExpression()
     BackTestResult result;
     result.tolerance = 1e-4f;
     
-    reset_variables<float>();
+    GradientContext<float> context;
+    context.variable_count = 0;
     
     // f(x,y) = x^2 + y^2 - 2*x*y
     // ∂f/∂x = 2x - 2y, ∂f/∂y = 2y - 2x
     // At (x,y) = (3,2): f = 9 + 4 - 12 = 1, ∂f/∂x = 6-4=2, ∂f/∂y = 4-6=-2
-    Variable<float> x = variable<float>(3.0f);
-    Variable<float> y = variable<float>(2.0f);
+    Variable<float> x = variable<float>(context, 3.0f);
+    Variable<float> y = variable<float>(context, 2.0f);
     
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
     VariableExpr<float> y_expr = makeVariableExpr<float>(y);
@@ -323,9 +333,9 @@ BackTestResult TestBackwardComplexExpression()
     BackAddExpr<float, BackMulExpr<float, VariableExpr<float>, VariableExpr<float> >, BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > > x2_plus_y2 = add<float>(x_squared, y_squared);
     BackSubExpr<float, BackAddExpr<float, BackMulExpr<float, VariableExpr<float>, VariableExpr<float> >, BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > >, BackMulExpr<float, float, BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > > > f = subtract<float>(x2_plus_y2, two_xy);
     
-    float function_value = compute_gradients<float>(f);
-    float x_gradient = x.gradient();
-    float y_gradient = y.gradient();
+    float function_value = compute_gradients<float>(context, f);
+    float x_gradient = x.gradient(context);
+    float y_gradient = y.gradient(context);
     
     result.expected_value = 1.0f;
     result.actual_value = function_value;

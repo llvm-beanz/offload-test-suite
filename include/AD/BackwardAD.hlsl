@@ -8,19 +8,40 @@
 // templates. Backward mode is efficient for functions with many inputs and 
 // few outputs (like gradients for optimization).
 
-// Maximum number of variables supported (for gradient storage)
-#define MAX_VARIABLES 64
+// ============================================================================
+// Gradient Context - Manages gradient storage per computation
+// ============================================================================
 
-// Global gradient storage - template specialized per type
-#define DECLARE_GRADIENT_STORAGE(T) \
-    static T g_gradients_##T[MAX_VARIABLES]; \
-    static int g_variable_count_##T = 0;
-
-// Declare storage for common types
-DECLARE_GRADIENT_STORAGE(float)
-DECLARE_GRADIENT_STORAGE(double)
-DECLARE_GRADIENT_STORAGE(half)
-DECLARE_GRADIENT_STORAGE(int)
+template<typename T, int MaxVars = 64>
+struct GradientContext
+{
+    T gradients[MaxVars];
+    int variable_count;
+    
+    void reset()
+    {
+        for (int i = 0; i < variable_count; i++)
+        {
+            gradients[i] = T(0);
+        }
+        variable_count = 0;
+    }
+    
+    void zeroGradients()
+    {
+        for (int i = 0; i < variable_count; i++)
+        {
+            gradients[i] = T(0);
+        }
+    }
+    
+    int allocateVariable()
+    {
+        int id = variable_count;
+        variable_count++;
+        return id;
+    }
+};
 
 // ============================================================================
 // Variable Class - Represents Input Variables
@@ -32,42 +53,20 @@ struct Variable
     T value;
     int id;
     
-    // Note: HLSL doesn't support constructors, so we use init functions
-    static Variable makeVariable(T val);
+    // Get the current gradient for this variable from context
+    T gradient(inout GradientContext<T> context)
+    {
+        return context.gradients[id];
+    }
     
-    // Get the current gradient for this variable
-    T gradient();
-    
-    // Reset gradient to zero
-    void zeroGradient();
+    // Reset gradient to zero in context
+    void zeroGradient(inout GradientContext<T> context)
+    {
+        context.gradients[id] = T(0);
+    }
 };
 
-// Template specializations for Variable methods
-#define SPECIALIZE_VARIABLE(T) \
-template<> \
-Variable<T> Variable<T>::makeVariable(T val) \
-{ \
-    Variable<T> var; \
-    var.value = val; \
-    var.id = g_variable_count_##T; \
-    g_variable_count_##T++; \
-    return var; \
-} \
-template<> \
-T Variable<T>::gradient() \
-{ \
-    return g_gradients_##T[id]; \
-} \
-template<> \
-void Variable<T>::zeroGradient() \
-{ \
-    g_gradients_##T[id] = T(0); \
-}
 
-SPECIALIZE_VARIABLE(float)
-SPECIALIZE_VARIABLE(double)
-SPECIALIZE_VARIABLE(half)
-SPECIALIZE_VARIABLE(int)
 
 // ============================================================================
 // Variable Expression (Leaf Node)
@@ -83,25 +82,12 @@ struct VariableExpr
         return var.value;
     }
     
-    void backward(T gradient)
+    void backward(inout GradientContext<T> context, T gradient)
     {
-        // Accumulate gradient for this variable - template specialized
-        // Will be defined per type below
+        // Accumulate gradient for this variable
+        context.gradients[var.id] += gradient;
     }
 };
-
-// Template specializations for VariableExpr backward method
-#define SPECIALIZE_VARIABLE_EXPR(T) \
-template<> \
-void VariableExpr<T>::backward(T gradient) \
-{ \
-    g_gradients_##T[var.id] += gradient; \
-}
-
-SPECIALIZE_VARIABLE_EXPR(float)
-SPECIALIZE_VARIABLE_EXPR(double)
-SPECIALIZE_VARIABLE_EXPR(half)
-SPECIALIZE_VARIABLE_EXPR(int)
 
 // ============================================================================
 // Addition Expression
@@ -118,11 +104,11 @@ struct BackAddExpr
         return left.forward() + right.forward();
     }
     
-    void backward(T gradient)
+    void backward(inout GradientContext<T> context, T gradient)
     {
         // d(left + right)/dleft = 1, d(left + right)/dright = 1
-        left.backward(gradient);
-        right.backward(gradient);
+        left.backward(context, gradient);
+        right.backward(context, gradient);
     }
 };
 
@@ -142,11 +128,11 @@ struct BackAddExpr<T, T, R>
         return left + right.forward();
     }
     
-    void backward(T gradient)
+    void backward(inout GradientContext<T> context, T gradient)
     {
         // d(scalar + right)/dright = 1
         // No gradient for scalar constant
-        right.backward(gradient);
+        right.backward(context, gradient);
     }
 };
 
@@ -162,11 +148,11 @@ struct BackAddExpr<T, L, T>
         return left.forward() + right;
     }
     
-    void backward(T gradient)
+    void backward(inout GradientContext<T> context, T gradient)
     {
         // d(left + scalar)/dleft = 1
         // No gradient for scalar constant
-        left.backward(gradient);
+        left.backward(context, gradient);
     }
 };
 
@@ -185,11 +171,11 @@ struct BackSubExpr
         return left.forward() - right.forward();
     }
     
-    void backward(T gradient)
+    void backward(inout GradientContext<T> context, T gradient)
     {
         // d(left - right)/dleft = 1, d(left - right)/dright = -1
-        left.backward(gradient);
-        right.backward(-gradient);
+        left.backward(context, gradient);
+        right.backward(context, -gradient);
     }
 };
 
@@ -209,11 +195,11 @@ struct BackSubExpr<T, T, R>
         return left - right.forward();
     }
     
-    void backward(T gradient)
+    void backward(inout GradientContext<T> context, T gradient)
     {
         // d(scalar - right)/dright = -1
         // No gradient for scalar constant  
-        right.backward(-gradient);
+        right.backward(context, -gradient);
     }
 };
 
@@ -229,11 +215,11 @@ struct BackSubExpr<T, L, T>
         return left.forward() - right;
     }
     
-    void backward(T gradient)
+    void backward(inout GradientContext<T> context, T gradient)
     {
         // d(left - scalar)/dleft = 1
         // No gradient for scalar constant
-        left.backward(gradient);
+        left.backward(context, gradient);
     }
 };
 
@@ -256,11 +242,11 @@ struct BackMulExpr
         return left_val * right_val;
     }
     
-    void backward(T gradient)
+    void backward(inout GradientContext<T> context, T gradient)
     {
         // d(left * right)/dleft = right, d(left * right)/dright = left
-        left.backward(gradient * right_val);
-        right.backward(gradient * left_val);
+        left.backward(context, gradient * right_val);
+        right.backward(context, gradient * left_val);
     }
 };
 
@@ -283,11 +269,11 @@ struct BackMulExpr<T, T, R>
         return left_val * right_val;
     }
     
-    void backward(T gradient)
+    void backward(inout GradientContext<T> context, T gradient)
     {
         // d(scalar * right)/dright = scalar
         // No gradient for scalar constant
-        right.backward(gradient * left_val);
+        right.backward(context, gradient * left_val);
     }
 };
 
@@ -307,11 +293,11 @@ struct BackMulExpr<T, L, T>
         return left_val * right_val;
     }
     
-    void backward(T gradient)
+    void backward(inout GradientContext<T> context, T gradient)
     {
         // d(left * scalar)/dleft = scalar
         // No gradient for scalar constant
-        left.backward(gradient * right_val);
+        left.backward(context, gradient * right_val);
     }
 };
 
@@ -334,11 +320,11 @@ struct BackDivExpr
         return left_val / right_val;
     }
     
-    void backward(T gradient)
+    void backward(inout GradientContext<T> context, T gradient)
     {
         // d(left / right)/dleft = 1/right, d(left / right)/dright = -left/right^2
-        left.backward(gradient / right_val);
-        right.backward(-gradient * left_val / (right_val * right_val));
+        left.backward(context, gradient / right_val);
+        right.backward(context, -gradient * left_val / (right_val * right_val));
     }
 };
 
@@ -362,11 +348,11 @@ struct BackDivExpr<T, T, R>
         return left_val / right_val;
     }
     
-    void backward(T gradient)
+    void backward(inout GradientContext<T> context, T gradient)
     {
         // d(scalar / right)/dright = -scalar/right^2
         // No gradient for scalar constant
-        right.backward(-gradient * left_val / (right_val * right_val));
+        right.backward(context, -gradient * left_val / (right_val * right_val));
     }
 };
 
@@ -386,11 +372,11 @@ struct BackDivExpr<T, L, T>
         return left_val / right_val;
     }
     
-    void backward(T gradient)
+    void backward(inout GradientContext<T> context, T gradient)
     {
         // d(left / scalar)/dleft = 1/scalar
         // No gradient for scalar constant
-        left.backward(gradient / right_val);
+        left.backward(context, gradient / right_val);
     }
 };
 
@@ -415,12 +401,12 @@ struct BackPowExpr
         return result_val;
     }
     
-    void backward(T gradient)
+    void backward(inout GradientContext<T> context, T gradient)
     {
         // d(base^exp)/dbase = exp * base^(exp-1)
         // d(base^exp)/dexp = base^exp * log(base)
-        base.backward(gradient * exp_val * pow(base_val, exp_val - T(1)));
-        exponent.backward(gradient * result_val * log(base_val));
+        base.backward(context, gradient * exp_val * pow(base_val, exp_val - T(1)));
+        exponent.backward(context, gradient * result_val * log(base_val));
     }
 };
 
@@ -438,10 +424,10 @@ struct BackNegExpr
         return -expr.forward();
     }
     
-    void backward(T gradient)
+    void backward(inout GradientContext<T> context, T gradient)
     {
         // d(-expr)/dexpr = -1
-        expr.backward(-gradient);
+        expr.backward(context, -gradient);
     }
 };
 
@@ -461,10 +447,10 @@ struct BackSinExpr
         return sin(expr_val);
     }
     
-    void backward(T gradient)
+    void backward(inout GradientContext<T> context, T gradient)
     {
         // d(sin(x))/dx = cos(x)
-        expr.backward(gradient * cos(expr_val));
+        expr.backward(context, gradient * cos(expr_val));
     }
 };
 
@@ -480,10 +466,10 @@ struct BackCosExpr
         return cos(expr_val);
     }
     
-    void backward(T gradient)
+    void backward(inout GradientContext<T> context, T gradient)
     {
         // d(cos(x))/dx = -sin(x)
-        expr.backward(gradient * (-sin(expr_val)));
+        expr.backward(context, gradient * (-sin(expr_val)));
     }
 };
 
@@ -504,10 +490,10 @@ struct BackExpExpr
         return result_val;
     }
     
-    void backward(T gradient)
+    void backward(inout GradientContext<T> context, T gradient)
     {
         // d(exp(x))/dx = exp(x)
-        expr.backward(gradient * result_val);
+        expr.backward(context, gradient * result_val);
     }
 };
 
@@ -523,10 +509,10 @@ struct BackLogExpr
         return log(expr_val);
     }
     
-    void backward(T gradient)
+    void backward(inout GradientContext<T> context, T gradient)
     {
         // d(log(x))/dx = 1/x
-        expr.backward(gradient / expr_val);
+        expr.backward(context, gradient / expr_val);
     }
 };
 
@@ -548,10 +534,10 @@ struct BackSqrtExpr
         return result_val;
     }
     
-    void backward(T gradient)
+    void backward(inout GradientContext<T> context, T gradient)
     {
         // d(sqrt(x))/dx = 1/(2*sqrt(x))
-        expr.backward(gradient / (T(2) * result_val));
+        expr.backward(context, gradient / (T(2) * result_val));
     }
 };
 
@@ -561,9 +547,12 @@ struct BackSqrtExpr
 
 // Create a variable
 template<typename T>
-Variable<T> variable(T value)
+Variable<T> variable(inout GradientContext<T> context, T value)
 {
-    return Variable<T>::makeVariable(value);
+    Variable<T> var;
+    var.value = value;
+    var.id = context.allocateVariable();
+    return var;
 }
 
 // Create a constant (just returns the typed value)
@@ -681,156 +670,113 @@ BackSqrtExpr<T, E> sqrtExpr(E expr)
 // Computation Functions
 // ============================================================================
 
-// Template specializations for reset functions
-#define SPECIALIZE_RESET(T) \
-template<> \
-void reset_variables<T>() \
-{ \
-    for (int i = 0; i < g_variable_count_##T; i++) \
-    { \
-        g_gradients_##T[i] = T(0); \
-    } \
-    g_variable_count_##T = 0; \
-}
-
-// Reset all variables for a specific type
-template<typename T>
-void reset_variables();
-
-SPECIALIZE_RESET(float)
-SPECIALIZE_RESET(double)
-SPECIALIZE_RESET(half)
-SPECIALIZE_RESET(int)
-
-// Template specializations for compute_gradients functions
-#define SPECIALIZE_COMPUTE_GRADIENTS(T) \
-template<> \
-T compute_gradients<T>(VariableExpr<T> var_expr) \
-{ \
-    for (int i = 0; i < g_variable_count_##T; i++) \
-    { \
-        g_gradients_##T[i] = T(0); \
-    } \
-    T result = var_expr.forward(); \
-    var_expr.backward(T(1)); \
-    return result; \
-}
-
 // Combined forward and backward pass for different expression types
 template<typename T>
-T compute_gradients(VariableExpr<T> var_expr);
-
-template<typename T, typename L, typename R>
-T compute_gradients(BackAddExpr<T, L, R> expr)
+T compute_gradients(inout GradientContext<T> context, VariableExpr<T> var_expr)
 {
-    // Zero all gradients for type T - simplified for float for now
-    for (int i = 0; i < g_variable_count_float; i++)
-    {
-        g_gradients_float[i] = 0.0f;
-    }
-    
-    // Forward pass
-    T result = expr.forward();
-    
-    // Backward pass (starting with gradient = 1.0 for the output)
-    expr.backward(T(1));
-    
+    context.zeroGradients();
+    T result = var_expr.forward();
+    var_expr.backward(context, T(1));
     return result;
 }
 
 template<typename T, typename L, typename R>
-T compute_gradients(BackSubExpr<T, L, R> expr)
+T compute_gradients(inout GradientContext<T> context, BackAddExpr<T, L, R> expr)
 {
-    for (int i = 0; i < g_variable_count_float; i++) { g_gradients_float[i] = 0.0f; }
+    context.zeroGradients();
     T result = expr.forward();
-    expr.backward(T(1));
+    expr.backward(context, T(1));
     return result;
 }
 
 template<typename T, typename L, typename R>
-T compute_gradients(BackMulExpr<T, L, R> expr)
+T compute_gradients(inout GradientContext<T> context, BackSubExpr<T, L, R> expr)
 {
-    for (int i = 0; i < g_variable_count_float; i++) { g_gradients_float[i] = 0.0f; }
+    context.zeroGradients();
     T result = expr.forward();
-    expr.backward(T(1));
+    expr.backward(context, T(1));
     return result;
 }
 
 template<typename T, typename L, typename R>
-T compute_gradients(BackDivExpr<T, L, R> expr)
+T compute_gradients(inout GradientContext<T> context, BackMulExpr<T, L, R> expr)
 {
-    for (int i = 0; i < g_variable_count_float; i++) { g_gradients_float[i] = 0.0f; }
+    context.zeroGradients();
     T result = expr.forward();
-    expr.backward(T(1));
+    expr.backward(context, T(1));
+    return result;
+}
+
+template<typename T, typename L, typename R>
+T compute_gradients(inout GradientContext<T> context, BackDivExpr<T, L, R> expr)
+{
+    context.zeroGradients();
+    T result = expr.forward();
+    expr.backward(context, T(1));
     return result;
 }
 
 template<typename T, typename L, typename R>  
-T compute_gradients(BackPowExpr<T, L, R> expr)
+T compute_gradients(inout GradientContext<T> context, BackPowExpr<T, L, R> expr)
 {
-    for (int i = 0; i < g_variable_count_float; i++) { g_gradients_float[i] = 0.0f; }
+    context.zeroGradients();
     T result = expr.forward();
-    expr.backward(T(1));
+    expr.backward(context, T(1));
     return result;
 }
 
 template<typename T, typename E>
-T compute_gradients(BackNegExpr<T, E> expr)
+T compute_gradients(inout GradientContext<T> context, BackNegExpr<T, E> expr)
 {
-    for (int i = 0; i < g_variable_count_float; i++) { g_gradients_float[i] = 0.0f; }
+    context.zeroGradients();
     T result = expr.forward();
-    expr.backward(T(1));
+    expr.backward(context, T(1));
     return result;
 }
 
 template<typename T, typename E>
-T compute_gradients(BackSinExpr<T, E> expr)
+T compute_gradients(inout GradientContext<T> context, BackSinExpr<T, E> expr)
 {
-    for (int i = 0; i < g_variable_count_float; i++) { g_gradients_float[i] = 0.0f; }
+    context.zeroGradients();
     T result = expr.forward();
-    expr.backward(T(1));
+    expr.backward(context, T(1));
     return result;
 }
 
 template<typename T, typename E>
-T compute_gradients(BackCosExpr<T, E> expr)
+T compute_gradients(inout GradientContext<T> context, BackCosExpr<T, E> expr)
 {
-    for (int i = 0; i < g_variable_count_float; i++) { g_gradients_float[i] = 0.0f; }
+    context.zeroGradients();
     T result = expr.forward();
-    expr.backward(T(1));
+    expr.backward(context, T(1));
     return result;
 }
 
 template<typename T, typename E>
-T compute_gradients(BackExpExpr<T, E> expr)
+T compute_gradients(inout GradientContext<T> context, BackExpExpr<T, E> expr)
 {
-    for (int i = 0; i < g_variable_count_float; i++) { g_gradients_float[i] = 0.0f; }
+    context.zeroGradients();
     T result = expr.forward();
-    expr.backward(T(1));
+    expr.backward(context, T(1));
     return result;
 }
 
 template<typename T, typename E>
-T compute_gradients(BackLogExpr<T, E> expr)
+T compute_gradients(inout GradientContext<T> context, BackLogExpr<T, E> expr)
 {
-    for (int i = 0; i < g_variable_count_float; i++) { g_gradients_float[i] = 0.0f; }
+    context.zeroGradients();
     T result = expr.forward();
-    expr.backward(T(1));
+    expr.backward(context, T(1));
     return result;
 }
 
 template<typename T, typename E>
-T compute_gradients(BackSqrtExpr<T, E> expr)
+T compute_gradients(inout GradientContext<T> context, BackSqrtExpr<T, E> expr)
 {
-    for (int i = 0; i < g_variable_count_float; i++) { g_gradients_float[i] = 0.0f; }
+    context.zeroGradients();
     T result = expr.forward();
-    expr.backward(T(1));
+    expr.backward(context, T(1));
     return result;
 }
-
-SPECIALIZE_COMPUTE_GRADIENTS(float)
-SPECIALIZE_COMPUTE_GRADIENTS(double)
-SPECIALIZE_COMPUTE_GRADIENTS(half)
-SPECIALIZE_COMPUTE_GRADIENTS(int)
 
 #endif // BACKWARD_AD_HLSL
