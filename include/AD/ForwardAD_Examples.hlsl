@@ -61,8 +61,8 @@ void ExampleDirectDual()
     Dual<float> negated = getValue(negate<float>(x));                // -x
     
     // Operations with floats
-    Dual<float> x_plus_5 = getValue(add<float>(x, makeDual<float>(5.0f, 0.0f)));
-    Dual<float> x_times_3 = getValue(multiply<float>(x, makeDual<float>(3.0f, 0.0f)));
+    Dual<float> x_plus_5 = getValue(add<float>(x, Dual<float>::Create(5.0f, 0.0f)));
+    Dual<float> x_times_3 = getValue(multiply<float>(x, Dual<float>::Create(3.0f, 0.0f)));
 }
 
 // Example 4: Complex composite function
@@ -73,10 +73,10 @@ void ExampleComposite()
     
     // Define the function: f(x) = sqrt(x^2 + 1) * log(x + 2)
     Dual<float> x_squared = getValue(multiply<float>(x, x));
-    Dual<float> x_sq_plus_1 = getValue(add<float>(x_squared, makeDual<float>(1.0f, 0.0f)));
+    Dual<float> x_sq_plus_1 = getValue(add<float>(x_squared, Dual<float>::Create(1.0f, 0.0f)));
     Dual<float> sqrt_part = getValue(sqrtExpr<float>(x_sq_plus_1));
     
-    Dual<float> x_plus_2 = getValue(add<float>(x, makeDual<float>(2.0f, 0.0f)));
+    Dual<float> x_plus_2 = getValue(add<float>(x, Dual<float>::Create(2.0f, 0.0f)));
     Dual<float> log_part = getValue(logExpr<float>(x_plus_2));
     
     Dual<float> f = getValue(multiply<float>(sqrt_part, log_part));
@@ -91,8 +91,8 @@ void ExampleComposite()
 void ExamplePartialX()
 {
     // To compute ∂f/∂x, set dx = 1, dy = 0
-    Dual<float> x = makeDual<float>(2.0f, 1.0f); // x = 2, dx = 1
-    Dual<float> y = makeDual<float>(3.0f, 0.0f); // y = 3, dy = 0
+    Dual<float> x = Dual<float>::Create(2.0f, 1.0f); // x = 2, dx = 1
+    Dual<float> y = Dual<float>::Create(3.0f, 0.0f); // y = 3, dy = 0
     
     Dual<float> xy = getValue(multiply<float>(x, y));
     Dual<float> sin_x = getValue(sinExpr<float>(x));
@@ -131,8 +131,8 @@ LightingResult ComputeLightingWithGradient(float3 position, float3 light_pos)
     Dual<float> distance = getValue(sqrtExpr<float>(dist_sq));
     
     // Inverse square law with some artistic falloff
-    Dual<float> dist_sq_plus_1 = getValue(add<float>(getValue(multiply<float>(distance, distance)), makeDual<float>(1.0f, 0.0f)));
-    result.intensity = getValue(divide<float>(makeDual<float>(1.0f, 0.0f), dist_sq_plus_1));
+    Dual<float> dist_sq_plus_1 = getValue(add<float>(getValue(multiply<float>(distance, distance)), Dual<float>::Create(1.0f, 0.0f)));
+    result.intensity = getValue(divide<float>(Dual<float>::Create(1.0f, 0.0f), dist_sq_plus_1));
     
     // The derivative gives us the gradient component in x-direction
     result.gradient_dir.x = result.intensity.derivative;
@@ -155,7 +155,7 @@ void ExampleDeferredEvaluation()
     Dual<float> exp_x = getValue(expExpr<float>(x));
     Dual<float> cos_exp_x = getValue(cosExpr<float>(exp_x));
     
-    Dual<float> x_plus_1 = getValue(add<float>(x, makeDual<float>(1.0f, 0.0f)));
+    Dual<float> x_plus_1 = getValue(add<float>(x, Dual<float>::Create(1.0f, 0.0f)));
     Dual<float> log_x_plus_1 = getValue(logExpr<float>(x_plus_1));
     
     Dual<float> cos_exp_log = getValue(multiply<float>(cos_exp_x, log_x_plus_1));
@@ -178,9 +178,9 @@ float NewtonMethod(float initial_guess)
         
         // f(x) = x^3 - 2x - 5
         Dual<float> x_cubed = getValue(power<float>(x, constant<float>(3.0f)));
-        Dual<float> two_x = getValue(multiply<float>(makeDual<float>(2.0f, 0.0f), x));
+        Dual<float> two_x = getValue(multiply<float>(Dual<float>::Create(2.0f, 0.0f), x));
         Dual<float> x_cubed_minus_2x = getValue(subtract<float>(x_cubed, two_x));
-        Dual<float> f = getValue(subtract<float>(x_cubed_minus_2x, makeDual<float>(5.0f, 0.0f)));
+        Dual<float> f = getValue(subtract<float>(x_cubed_minus_2x, Dual<float>::Create(5.0f, 0.0f)));
         
         float f_value = f.value;
         float f_derivative = f.derivative;
@@ -259,7 +259,7 @@ void ExampleMatrixVector()
     // Create parameterized matrix [[t, 0], [0, 2t]]
     matrix<float, 2, 2> mat_val = matrix<float, 2, 2>(t.value, 0, 0, 2*t.value);
     matrix<float, 2, 2> mat_deriv = matrix<float, 2, 2>(t.derivative, 0, 0, 2*t.derivative);
-    Dual<matrix<float, 2, 2> > A = makeDual<matrix<float, 2, 2> >(mat_val, mat_deriv);
+    Dual<matrix<float, 2, 2> > A = Dual<matrix<float, 2, 2> >::Create(mat_val, mat_deriv);
     
     // Create vector [1, 3]
     Dual<vector<float, 2> > v = constantVector<float, 2>(vector<float, 2>(1.0f, 3.0f));
@@ -282,7 +282,7 @@ void ExampleMatrixDeterminant()
     // Create matrix [[a, 1], [b, 4]] = [[a, 1], [3, 4]]
     matrix<float, 2, 2> mat_val = matrix<float, 2, 2>(a.value, 1, b.value, 4);
     matrix<float, 2, 2> mat_deriv = matrix<float, 2, 2>(a.derivative, 0, b.derivative, 0);
-    Dual<matrix<float, 2, 2> > M = makeDual<matrix<float, 2, 2> >(mat_val, mat_deriv);
+    Dual<matrix<float, 2, 2> > M = Dual<matrix<float, 2, 2> >::Create(mat_val, mat_deriv);
     
     // Compute determinant: det([[a,1],[3,4]]) = a*4 - 1*3 = 4a - 3
     // d/da[4a - 3] = 4
@@ -308,7 +308,7 @@ void ExampleTransformationPipeline()
                                                    sin_theta.value, cos_theta.value);
     matrix<float, 2, 2> rot_deriv = matrix<float, 2, 2>(cos_theta.derivative, neg_sin.derivative,
                                                      sin_theta.derivative, cos_theta.derivative);
-    Dual<matrix<float, 2, 2> > R = makeDual<matrix<float, 2, 2> >(rot_val, rot_deriv);
+    Dual<matrix<float, 2, 2> > R = Dual<matrix<float, 2, 2> >::Create(rot_val, rot_deriv);
     
     // Input vector to transform
     Dual<vector<float, 2> > input = constantVector<float, 2>(vector<float, 2>(1.0f, 0.0f));

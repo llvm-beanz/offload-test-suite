@@ -1,4 +1,4 @@
-#include "AD/ForwardAD.hlsl"
+#include "ForwardAD.hlsl"
 
 // Test suite for Forward Automatic Differentiation
 
@@ -25,7 +25,7 @@ export TestResult TestBasicArithmetic()
     // Test: f(x) = 2x + 3, f'(x) = 2
     // At x = 5: f(5) = 13, f'(5) = 2
     Dual<float> x = variable<float>(5.0f);
-    Dual<float> f = getValue(add<float>(getValue(multiply<float>(makeDual<float>(2.0f, 0.0f), x)), makeDual<float>(3.0f, 0.0f)));
+    Dual<float> f = getValue(add<float>(getValue(multiply<float>(Dual<float>::Create(2.0f, 0.0f), x)), Dual<float>::Create(3.0f, 0.0f)));
     
     result.expected = 2.0f;  // Expected derivative
     result.actual = f.derivative;
@@ -120,7 +120,7 @@ export TestResult TestChainRule()
     // Test: f(x) = sin(2x), f'(x) = 2*cos(2x)
     // At x = 0: f(0) = 0, f'(0) = 2
     Dual<float> x = variable<float>(0.0f);
-    Dual<float> f = getValue(sinExpr<float>(getValue(multiply<float>(makeDual<float>(2.0f, 0.0f), x))));
+    Dual<float> f = getValue(sinExpr<float>(getValue(multiply<float>(Dual<float>::Create(2.0f, 0.0f), x))));
     
     result.expected = 2.0f;  // 2*cos(0) = 2*1 = 2
     result.actual = f.derivative;
@@ -158,7 +158,7 @@ export TestResult TestQuotientRule()
     // Test: f(x) = x / (x + 1), f'(x) = 1 / (x + 1)^2
     // At x = 0: f(0) = 0, f'(0) = 1
     Dual<float> x = variable<float>(0.0f);
-    Dual<float> f = getValue(divide<float>(x, getValue(add<float>(x, makeDual<float>(1.0f, 0.0f)))));
+    Dual<float> f = getValue(divide<float>(x, getValue(add<float>(x, Dual<float>::Create(1.0f, 0.0f)))));
     
     result.expected = 1.0f;  // 1 / (0 + 1)^2 = 1
     result.actual = f.derivative;
@@ -265,7 +265,7 @@ export TestResult TestVectorDotProduct()
     // f(x) = x*1 + 2x*3 = x + 6x = 7x
     // f'(x) = 7
     Dual<float> x = variable<float>(2.0f);
-    Dual<vector<float, 2> > v = makeVector2<float>(x, getValue(multiply<float>(makeDual<float>(2.0f, 0.0f), x)));
+    Dual<vector<float, 2> > v = makeVector2<float>(x, getValue(multiply<float>(Dual<float>::Create(2.0f, 0.0f), x)));
     Dual<vector<float, 2> > u = constantVector<float, 2>(vector<float, 2>(1.0f, 3.0f));
     
     Dual<float> f = getValue(dotProduct<float, 2>(v, u));
@@ -338,7 +338,7 @@ export TestResult TestMatrixMultiplication()
     // Create matrix [[x, 0], [0, 1]]
     matrix<float, 2, 2> mat_val = matrix<float, 2, 2>(x.value, 0, 0, 1);
     matrix<float, 2, 2> mat_deriv = matrix<float, 2, 2>(x.derivative, 0, 0, 0);
-    Dual<matrix<float, 2, 2> > A = makeDual<matrix<float, 2, 2> >(mat_val, mat_deriv);
+    Dual<matrix<float, 2, 2> > A = Dual<matrix<float, 2, 2> >::Create(mat_val, mat_deriv);
     
     Dual<vector<float, 2> > v = constantVector<float, 2>(vector<float, 2>(1.0f, 2.0f));
     
@@ -366,7 +366,7 @@ export TestResult TestMatrixDeterminant()
     // Create matrix [[x, 1], [2, 3]]
     matrix<float, 2, 2> mat_val = matrix<float, 2, 2>(x.value, 1, 2, 3);
     matrix<float, 2, 2> mat_deriv = matrix<float, 2, 2>(x.derivative, 0, 0, 0);
-    Dual<matrix<float, 2, 2> > A = makeDual<matrix<float, 2, 2> >(mat_val, mat_deriv);
+    Dual<matrix<float, 2, 2> > A = Dual<matrix<float, 2, 2> >::Create(mat_val, mat_deriv);
     
     Dual<float> f = getValue(determinantExpr<float, 2>(A));
     
