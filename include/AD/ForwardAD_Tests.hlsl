@@ -24,13 +24,13 @@ export TestResult TestBasicArithmetic()
     
     // Test: f(x) = 2x + 3, f'(x) = 2
     // At x = 5: f(5) = 13, f'(5) = 2
-    Dual x = variable(5.0f);
-    Dual f = getValue(add(getValue(multiply(makeDual(2.0f, 0.0f), x)), makeDual(3.0f, 0.0f)));
+    Dual<float> x = variable<float>(5.0f);
+    Dual<float> f = getValue(add<float>(getValue(multiply<float>(makeDual<float>(2.0f, 0.0f), x)), makeDual<float>(3.0f, 0.0f)));
     
     result.expected = 2.0f;  // Expected derivative
-    result.actual = derivative(f);
-    result.passed = ApproxEqual(value(f), 13.0f) && 
-                   ApproxEqual(derivative(f), 2.0f, result.tolerance);
+    result.actual = f.derivative;
+    result.passed = ApproxEqual(f.value, 13.0f) && 
+                   ApproxEqual(f.derivative, 2.0f, result.tolerance);
     
     return result;
 }
@@ -43,13 +43,13 @@ export TestResult TestQuadratic()
     
     // Test: f(x) = x^2, f'(x) = 2x
     // At x = 3: f(3) = 9, f'(3) = 6
-    Dual x = variable(3.0f);
-    Dual f = getValue(multiply(x, x));
+    Dual<float> x = variable<float>(3.0f);
+    Dual<float> f = getValue(multiply<float>(x, x));
     
     result.expected = 6.0f;  // Expected derivative
-    result.actual = derivative(f);
-    result.passed = ApproxEqual(value(f), 9.0f) && 
-                   ApproxEqual(derivative(f), 6.0f, result.tolerance);
+    result.actual = f.derivative;
+    result.passed = ApproxEqual(f.value, 9.0f) && 
+                   ApproxEqual(f.derivative, 6.0f, result.tolerance);
     
     return result;
 }
@@ -62,13 +62,13 @@ export TestResult TestTrigonometric()
     
     // Test: f(x) = sin(x), f'(x) = cos(x)
     // At x = 0: f(0) = 0, f'(0) = 1
-    Dual x = variable(0.0f);
-    Dual f = getValue(sinExpr(x));
+    Dual<float> x = variable<float>(0.0f);
+    Dual<float> f = getValue(sinExpr<float>(x));
     
     result.expected = 1.0f;  // cos(0) = 1
-    result.actual = derivative(f);
-    result.passed = ApproxEqual(value(f), 0.0f, result.tolerance) && 
-                   ApproxEqual(derivative(f), 1.0f, result.tolerance);
+    result.actual = f.derivative;
+    result.passed = ApproxEqual(f.value, 0.0f, result.tolerance) && 
+                   ApproxEqual(f.derivative, 1.0f, result.tolerance);
     
     return result;
 }
@@ -81,13 +81,13 @@ export TestResult TestExponential()
     
     // Test: f(x) = exp(x), f'(x) = exp(x)
     // At x = 0: f(0) = 1, f'(0) = 1
-    Dual x = variable(0.0f);
-    Dual f = getValue(expExpr(x));
+    Dual<float> x = variable<float>(0.0f);
+    Dual<float> f = getValue(expExpr<float>(x));
     
     result.expected = 1.0f;  // exp(0) = 1
-    result.actual = derivative(f);
-    result.passed = ApproxEqual(value(f), 1.0f, result.tolerance) && 
-                   ApproxEqual(derivative(f), 1.0f, result.tolerance);
+    result.actual = f.derivative;
+    result.passed = ApproxEqual(f.value, 1.0f, result.tolerance) && 
+                   ApproxEqual(f.derivative, 1.0f, result.tolerance);
     
     return result;
 }
@@ -100,13 +100,13 @@ export TestResult TestLogarithm()
     
     // Test: f(x) = log(x), f'(x) = 1/x
     // At x = 1: f(1) = 0, f'(1) = 1
-    Dual x = variable(1.0f);
-    Dual f = getValue(logExpr(x));
+    Dual<float> x = variable<float>(1.0f);
+    Dual<float> f = getValue(logExpr<float>(x));
     
     result.expected = 1.0f;  // 1/1 = 1
-    result.actual = derivative(f);
-    result.passed = ApproxEqual(value(f), 0.0f, result.tolerance) && 
-                   ApproxEqual(derivative(f), 1.0f, result.tolerance);
+    result.actual = f.derivative;
+    result.passed = ApproxEqual(f.value, 0.0f, result.tolerance) && 
+                   ApproxEqual(f.derivative, 1.0f, result.tolerance);
     
     return result;
 }
@@ -119,13 +119,13 @@ export TestResult TestChainRule()
     
     // Test: f(x) = sin(2x), f'(x) = 2*cos(2x)
     // At x = 0: f(0) = 0, f'(0) = 2
-    Dual x = variable(0.0f);
-    Dual f = getValue(sinExpr(getValue(multiply(makeDual(2.0f, 0.0f), x))));
+    Dual<float> x = variable<float>(0.0f);
+    Dual<float> f = getValue(sinExpr<float>(getValue(multiply<float>(makeDual<float>(2.0f, 0.0f), x))));
     
     result.expected = 2.0f;  // 2*cos(0) = 2*1 = 2
-    result.actual = derivative(f);
-    result.passed = ApproxEqual(value(f), 0.0f, result.tolerance) && 
-                   ApproxEqual(derivative(f), 2.0f, result.tolerance);
+    result.actual = f.derivative;
+    result.passed = ApproxEqual(f.value, 0.0f, result.tolerance) && 
+                   ApproxEqual(f.derivative, 2.0f, result.tolerance);
     
     return result;
 }
@@ -138,13 +138,13 @@ export TestResult TestProductRule()
     
     // Test: f(x) = x * sin(x), f'(x) = sin(x) + x*cos(x)
     // At x = 0: f(0) = 0, f'(0) = sin(0) + 0*cos(0) = 0
-    Dual x = variable(0.0f);
-    Dual f = getValue(multiply(x, getValue(sinExpr(x))));
+    Dual<float> x = variable<float>(0.0f);
+    Dual<float> f = getValue(multiply<float>(x, getValue(sinExpr<float>(x))));
     
     result.expected = 0.0f;  // sin(0) + 0*cos(0) = 0
-    result.actual = derivative(f);
-    result.passed = ApproxEqual(value(f), 0.0f, result.tolerance) && 
-                   ApproxEqual(derivative(f), 0.0f, result.tolerance);
+    result.actual = f.derivative;
+    result.passed = ApproxEqual(f.value, 0.0f, result.tolerance) && 
+                   ApproxEqual(f.derivative, 0.0f, result.tolerance);
     
     return result;
 }
@@ -157,13 +157,13 @@ export TestResult TestQuotientRule()
     
     // Test: f(x) = x / (x + 1), f'(x) = 1 / (x + 1)^2
     // At x = 0: f(0) = 0, f'(0) = 1
-    Dual x = variable(0.0f);
-    Dual f = getValue(divide(x, getValue(add(x, makeDual(1.0f, 0.0f)))));
+    Dual<float> x = variable<float>(0.0f);
+    Dual<float> f = getValue(divide<float>(x, getValue(add<float>(x, makeDual<float>(1.0f, 0.0f)))));
     
     result.expected = 1.0f;  // 1 / (0 + 1)^2 = 1
-    result.actual = derivative(f);
-    result.passed = ApproxEqual(value(f), 0.0f, result.tolerance) && 
-                   ApproxEqual(derivative(f), 1.0f, result.tolerance);
+    result.actual = f.derivative;
+    result.passed = ApproxEqual(f.value, 0.0f, result.tolerance) && 
+                   ApproxEqual(f.derivative, 1.0f, result.tolerance);
     
     return result;
 }
@@ -176,13 +176,13 @@ export TestResult TestPowerRule()
     
     // Test: f(x) = x^3, f'(x) = 3*x^2
     // At x = 2: f(2) = 8, f'(2) = 12
-    Dual x = variable(2.0f);
-    Dual f = getValue(power(x, constant(3.0f)));
+    Dual<float> x = variable<float>(2.0f);
+    Dual<float> f = getValue(power<float>(x, constant<float>(3.0f)));
     
     result.expected = 12.0f;  // 3 * 2^2 = 12
-    result.actual = derivative(f);
-    result.passed = ApproxEqual(value(f), 8.0f, result.tolerance) && 
-                   ApproxEqual(derivative(f), 12.0f, result.tolerance);
+    result.actual = f.derivative;
+    result.passed = ApproxEqual(f.value, 8.0f, result.tolerance) && 
+                   ApproxEqual(f.derivative, 12.0f, result.tolerance);
     
     return result;
 }
@@ -196,15 +196,15 @@ export TestResult TestComplexExpression()
     // Test: f(x) = exp(x) * sin(x) + x^2
     // f'(x) = exp(x)*sin(x) + exp(x)*cos(x) + 2x
     // At x = 0: f(0) = 0, f'(0) = 0 + 1*1 + 0 = 1
-    Dual x = variable(0.0f);
-    Dual exp_sin = getValue(multiply(getValue(expExpr(x)), getValue(sinExpr(x))));
-    Dual x_squared = getValue(multiply(x, x));
-    Dual f = getValue(add(exp_sin, x_squared));
+    Dual<float> x = variable<float>(0.0f);
+    Dual<float> exp_sin = getValue(multiply<float>(getValue(expExpr<float>(x)), getValue(sinExpr<float>(x))));
+    Dual<float> x_squared = getValue(multiply<float>(x, x));
+    Dual<float> f = getValue(add<float>(exp_sin, x_squared));
     
     result.expected = 1.0f;
-    result.actual = derivative(f);
-    result.passed = ApproxEqual(value(f), 0.0f, result.tolerance) && 
-                   ApproxEqual(derivative(f), 1.0f, result.tolerance);
+    result.actual = f.derivative;
+    result.passed = ApproxEqual(f.value, 0.0f, result.tolerance) && 
+                   ApproxEqual(f.derivative, 1.0f, result.tolerance);
     
     return result;
 }
