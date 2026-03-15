@@ -743,21 +743,21 @@ MAKE_COMPONENT_ACCESSOR(W, 3)
 
 // Specific vector construction functions
 template<typename T>
-Dual<vector<T, 2> > makeVector2(Dual<T> x, Dual<T> y)
+Dual<vector<T, 2> > makeVector(Dual<T> x, Dual<T> y)
 {
     return Dual<vector<T, 2> >::Create(vector<T, 2>(x.value, y.value), 
                                  vector<T, 2>(x.derivative, y.derivative));
 }
 
 template<typename T>
-Dual<vector<T, 3> > makeVector3(Dual<T> x, Dual<T> y, Dual<T> z)
+Dual<vector<T, 3> > makeVector(Dual<T> x, Dual<T> y, Dual<T> z)
 {
     return Dual<vector<T, 3> >::Create(vector<T, 3>(x.value, y.value, z.value), 
                                  vector<T, 3>(x.derivative, y.derivative, z.derivative));
 }
 
 template<typename T>
-Dual<vector<T, 4> > makeVector4(Dual<T> x, Dual<T> y, Dual<T> z, Dual<T> w)
+Dual<vector<T, 4> > makeVector(Dual<T> x, Dual<T> y, Dual<T> z, Dual<T> w)
 {
     return Dual<vector<T, 4> >::Create(vector<T, 4>(x.value, y.value, z.value, w.value), 
                                  vector<T, 4>(x.derivative, y.derivative, z.derivative, w.derivative));

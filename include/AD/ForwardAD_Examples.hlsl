@@ -208,7 +208,7 @@ void ExampleVectorOperations()
     Dual<float> y = variable<float>(2.0f);
     
     // Create a vector [x, y]
-    Dual<vector<float, 2> > v = makeVector2<float>(x, y);
+    Dual<vector<float, 2> > v = makeVector<float>(x, y);
     
     // Create a constant vector [3, 4]
     Dual<vector<float, 2> > u = constantVector<float, 2>(vector<float, 2>(3.0f, 4.0f));
@@ -237,8 +237,8 @@ void ExampleCrossProduct()
     Dual<float> x = variable<float>(2.0f);
     
     // Create vectors: v = [x, 1, 0] and u = [0, x, 1]
-    Dual<vector<float, 3> > v = makeVector3<float>(x, constant<float>(1.0f), constant<float>(0.0f));
-    Dual<vector<float, 3> > u = makeVector3<float>(constant<float>(0.0f), x, constant<float>(1.0f));
+    Dual<vector<float, 3> > v = makeVector<float>(x, constant<float>(1.0f), constant<float>(0.0f));
+    Dual<vector<float, 3> > u = makeVector<float>(constant<float>(0.0f), x, constant<float>(1.0f));
     
     // Compute cross product: v × u
     // [x,1,0] × [0,x,1] = [1*1-0*x, 0*0-x*1, x*x-1*0] = [1, -x, x^2]

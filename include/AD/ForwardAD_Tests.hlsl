@@ -265,7 +265,7 @@ export TestResult TestVectorDotProduct()
     // f(x) = x*1 + 2x*3 = x + 6x = 7x
     // f'(x) = 7
     Dual<float> x = variable<float>(2.0f);
-    Dual<vector<float, 2> > v = makeVector2<float>(x, getValue(multiply<float>(Dual<float>::Create(2.0f, 0.0f), x)));
+    Dual<vector<float, 2> > v = makeVector<float>(x, getValue(multiply<float>(Dual<float>::Create(2.0f, 0.0f), x)));
     Dual<vector<float, 2> > u = constantVector<float, 2>(vector<float, 2>(1.0f, 3.0f));
     
     Dual<float> f = getValue(dotProduct<float, 2>(v, u));
@@ -288,7 +288,7 @@ export TestResult TestVectorLength()
     // f(x) = sqrt(x^2) = |x| = x (for x > 0)
     // f'(x) = 1
     Dual<float> x = variable<float>(3.0f);
-    Dual<vector<float, 2> > v = makeVector2<float>(x, constant<float>(0.0f));
+    Dual<vector<float, 2> > v = makeVector<float>(x, constant<float>(0.0f));
     
     Dual<float> f = getValue(lengthExpr<float, 2>(v));
     
@@ -309,7 +309,7 @@ export TestResult TestVectorNormalize()
     // Test: f(x) = normalize([x, x])
     // This is more complex - testing that it compiles and produces reasonable results
     Dual<float> x = variable<float>(1.0f);
-    Dual<vector<float, 2> > v = makeVector2<float>(x, x);
+    Dual<vector<float, 2> > v = makeVector<float>(x, x);
     
     Dual<vector<float, 2> > f = getValue(normalizeExpr<float, 2>(v));
     
