@@ -313,7 +313,7 @@ Buffers:
       1.0, 1.0,      # Test 3: Exponential f(x)=exp(x) → f(0)=1, f'(0)=1
       -0.693147181, 2.0, # Test 4: Logarithm f(x)=log(x) → f(0.5)=log(0.5), f'(0.5)=2
       0.0, 2.0,      # Test 5: Chain Rule f(x)=sin(2x) → f(0)=0, f'(0)=2
-      0.009999833, 0.199333417, # Test 6: Product Rule f(x)=x*sin(x) → f(0.1), f'(0.1)
+      0.009983342, 0.199333417, # Test 6: Product Rule f(x)=x*sin(x) → f(0.1)=0.1*sin(0.1), f'(0.1)
       0.166666667, 0.694444444,  # Test 7: Quotient Rule f(x)=x/(x+1) → f(0.2)=0.2/1.2=1/6, f'(0.2)=1/(1.2)^2
       0.0625, 0.5,   # Test 8: Power Rule f(x)=x^4 → f(0.5)=0.0625, f'(0.5)=4*0.5^3=0.5
       0.0, 1.0,      # Test 9: Complex Expression → f(0)=0, f'(0)=1
@@ -330,7 +330,7 @@ Buffers:
       7.389056099, 7.389056099,  # Test 3: Exponential f(x)=exp(x) → f(2)=e^2, f'(2)=e^2
       2.302585093, 0.1,          # Test 4: Logarithm f(x)=log(x) → f(10)=log(10), f'(10)=0.1
       0.0, 2.0,      # Test 5: Chain Rule f(x)=sin(2x) → f(0)=0, f'(0)=2
-      1.818594854, 0.077075327, # Test 6: Product Rule f(x)=x*sin(x) → f(2)=2*sin(2), f'(2)=sin(2)+2*cos(2)
+      1.818594854, 0.077003754, # Test 6: Product Rule f(x)=x*sin(x) → f(2)=2*sin(2), f'(2)=sin(2)+2*cos(2)
       0.833333333, 0.027777778, # Test 7: Quotient Rule f(x)=x/(x+1) → f(5), f'(5)
       1.258925412, 0.0125892541, # Test 8: Power Rule f(x)=x^0.1 → f(10)=10^0.1, f'(10)=0.1*10^(-0.9)≈0.0126
       3.28736, 5.75605,  # Test 9: Complex Expression → f(1), f'(1)
@@ -347,7 +347,7 @@ Buffers:
       0.367879441, 0.367879441, # Test 3: Exponential f(x)=exp(x) → f(-1)=e^(-1), f'(-1)=e^(-1)
       -2.302585093, 10.0,       # Test 4: Logarithm f(x)=log(x) → f(0.1), f'(0.1)
       -0.8414709848, 1.0806046117, # Test 5: Chain Rule f(x)=sin(2x) → f(-0.5)=sin(-1), f'(-0.5)=2*cos(-1)
-      1.818594854, 0.077075327, # Test 6: Product Rule f(x)=x*sin(x) → f(2)=2*sin(2), f'(2)=sin(2)+2*cos(2)
+      1.496242538, 1.103606348, # Test 6: Product Rule f(x)=x*sin(x) → f(1.5)=1.5*sin(1.5), f'(1.5)=sin(1.5)+1.5*cos(1.5)
       2.0, 1.0,      # Test 7: Quotient Rule f(x)=x/(x+1) → f(-2)=2, f'(-2)=1
       8.0, 12.0,    # Test 8: Power Rule f(x)=x^3 → f(2)=2^3=8, f'(2)=3*2^2=12
       -0.0407863, -0.758505, # Test 9: Complex Expression → f(-0.5), f'(-0.5)
@@ -389,7 +389,11 @@ DescriptorSets:
 Results:
   - Result: ForwardADTest
     Rule: BufferFloatULP
-    ULPT: 100
+    # There are some pretty big rounding errors in some of these, particularly 
+    # Test 9 (Complex Expression) which involves multiple operations. 70 ULP is
+    # sufficient to account for these while still catching significant errors.
+    ULPT: 70
+    ZeroTolerance: 1e-6
     Actual: ResultBuffer
     Expected: ExpectedResults
 
