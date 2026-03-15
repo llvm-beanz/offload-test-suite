@@ -1,0 +1,13 @@
+---
+Shaders:
+  - Stage: Compute
+    Entry: CSMain
+    DispatchSize: [1, 1, 1]
+Buffers: []
+DescriptorSets: []
+...
+#--- end
+
+# RUN: %dxc_target -T cs_6_6 -E CSMain -Fo %t.o %t/source.hlsl
+# RUN: %offloader %t/pipeline.yaml %t.o | FileCheck %s
+
