@@ -1,226 +1,135 @@
 #include "ForwardAD.hlsl"
 
 // Test suite for Forward Automatic Differentiation
+// Each test function returns its computed result for CPU verification
 
-struct TestResult
+// Structure to store individual test results
+struct ADTestResult
 {
-    bool passed;
-    float expected;
-    float actual;
-    float tolerance;
+    float value;
+    float derivative;
 };
 
-// Helper function to check if two floats are approximately equal
-bool ApproxEqual(float a, float b, float tolerance = 1e-5f)
+// Structure to store all test input values (provided by CPU)
+struct ADTestInputs
 {
-    return abs(a - b) < tolerance;
-}
+    // Basic scalar inputs
+    float basic_arithmetic_x;
+    float quadratic_x;
+    float trigonometric_x;
+    float exponential_x;
+    float logarithm_x;
+    float chain_rule_x;
+    float product_rule_x;
+    float quotient_rule_x;
+    float power_rule_x;
+    float power_rule_exponent;
+    float complex_expression_x;
+    
+    // Vector test inputs
+    float vector_dot_x;
+    float vector_dot_scalar;
+    float2 vector_dot_u;
+    float vector_length_x;
+    float vector_length_constant;
+    float vector_normalize_x;
+    
+    // Matrix test inputs  
+    float matrix_mult_x;
+    float2 matrix_mult_v;
+    float matrix_det_x;
+    float matrix_det_a;
+    float matrix_det_b;
+    float matrix_det_c;
+};
+
+// Input buffer to receive test parameters from CPU
+StructuredBuffer<ADTestInputs> InputBuffer : register(t0);
+
+// Structured buffer to store test results for CPU readback
+RWStructuredBuffer<ADTestResult> ResultBuffer : register(u0);
 
 // Test basic arithmetic operations: f(x) = 2x + 3, f'(x) = 2
-TestResult TestBasicArithmetic(float input_x)
+Dual<float> TestBasicArithmetic(float input_x)
 {
-    TestResult result;
-    result.tolerance = 1e-5f;
-    
     Dual<float> x = variable<float>(input_x);
     Dual<float> f = getValue(add<float>(getValue(multiply<float>(Dual<float>::Create(2.0f, 0.0f), x)), Dual<float>::Create(3.0f, 0.0f)));
-    
-    float expected_value = 2.0f * input_x + 3.0f;
-    float expected_derivative = 2.0f;
-    
-    result.expected = expected_derivative;
-    result.actual = f.derivative;
-    result.passed = ApproxEqual(f.value, expected_value) && 
-                   ApproxEqual(f.derivative, expected_derivative, result.tolerance);
-    
-    return result;
+    return f;
 }
 
 // Test quadratic function: f(x) = x^2, f'(x) = 2x
-TestResult TestQuadratic(float input_x)
+Dual<float> TestQuadratic(float input_x)
 {
-    TestResult result;
-    result.tolerance = 1e-5f;
-    
     Dual<float> x = variable<float>(input_x);
     Dual<float> f = getValue(multiply<float>(x, x));
-    
-    float expected_value = input_x * input_x;
-    float expected_derivative = 2.0f * input_x;
-    
-    result.expected = expected_derivative;
-    result.actual = f.derivative;
-    result.passed = ApproxEqual(f.value, expected_value) && 
-                   ApproxEqual(f.derivative, expected_derivative, result.tolerance);
-    
-    return result;
+    return f;
 }
 
 // Test trigonometric functions: f(x) = sin(x), f'(x) = cos(x)
-TestResult TestTrigonometric(float input_x)
+Dual<float> TestTrigonometric(float input_x)
 {
-    TestResult result;
-    result.tolerance = 1e-4f;
-    
     Dual<float> x = variable<float>(input_x);
     Dual<float> f = getValue(sinExpr<float>(x));
-    
-    float expected_value = sin(input_x);
-    float expected_derivative = cos(input_x);
-    
-    result.expected = expected_derivative;
-    result.actual = f.derivative;
-    result.passed = ApproxEqual(f.value, expected_value, result.tolerance) && 
-                   ApproxEqual(f.derivative, expected_derivative, result.tolerance);
-    
-    return result;
+    return f;
 }
 
 // Test exponential function: f(x) = exp(x), f'(x) = exp(x)
-TestResult TestExponential(float input_x)
+Dual<float> TestExponential(float input_x)
 {
-    TestResult result;
-    result.tolerance = 1e-4f;
-    
     Dual<float> x = variable<float>(input_x);
     Dual<float> f = getValue(expExpr<float>(x));
-    
-    float expected_value = exp(input_x);
-    float expected_derivative = exp(input_x);
-    
-    result.expected = expected_derivative;
-    result.actual = f.derivative;
-    result.passed = ApproxEqual(f.value, expected_value, result.tolerance) && 
-                   ApproxEqual(f.derivative, expected_derivative, result.tolerance);
-    
-    return result;
+    return f;
 }
 
 // Test logarithm function: f(x) = log(x), f'(x) = 1/x
-TestResult TestLogarithm(float input_x)
+Dual<float> TestLogarithm(float input_x)
 {
-    TestResult result;
-    result.tolerance = 1e-4f;
-    
     Dual<float> x = variable<float>(input_x);
     Dual<float> f = getValue(logExpr<float>(x));
-    
-    float expected_value = log(input_x);
-    float expected_derivative = 1.0f / input_x;
-    
-    result.expected = expected_derivative;
-    result.actual = f.derivative;
-    result.passed = ApproxEqual(f.value, expected_value, result.tolerance) && 
-                   ApproxEqual(f.derivative, expected_derivative, result.tolerance);
-    
-    return result;
+    return f;
 }
 
 // Test chain rule with composite function: f(x) = sin(2x), f'(x) = 2*cos(2x)
-TestResult TestChainRule(float input_x)
+Dual<float> TestChainRule(float input_x)
 {
-    TestResult result;
-    result.tolerance = 1e-4f;
-    
     Dual<float> x = variable<float>(input_x);
     Dual<float> f = getValue(sinExpr<float>(getValue(multiply<float>(Dual<float>::Create(2.0f, 0.0f), x))));
-    
-    float expected_value = sin(2.0f * input_x);
-    float expected_derivative = 2.0f * cos(2.0f * input_x);
-    
-    result.expected = expected_derivative;
-    result.actual = f.derivative;
-    result.passed = ApproxEqual(f.value, expected_value, result.tolerance) && 
-                   ApproxEqual(f.derivative, expected_derivative, result.tolerance);
-    
-    return result;
+    return f;
 }
 
 // Test product rule: f(x) = x * sin(x), f'(x) = sin(x) + x*cos(x)
-TestResult TestProductRule(float input_x)
+Dual<float> TestProductRule(float input_x)
 {
-    TestResult result;
-    result.tolerance = 1e-4f;
-    
     Dual<float> x = variable<float>(input_x);
     Dual<float> f = getValue(multiply<float>(x, getValue(sinExpr<float>(x))));
-    
-    float expected_value = input_x * sin(input_x);
-    float expected_derivative = sin(input_x) + input_x * cos(input_x);
-    
-    result.expected = expected_derivative;
-    result.actual = f.derivative;
-    result.passed = ApproxEqual(f.value, expected_value, result.tolerance) && 
-                   ApproxEqual(f.derivative, expected_derivative, result.tolerance);
-    
-    return result;
+    return f;
 }
 
 // Test quotient rule: f(x) = x / (x + 1), f'(x) = 1 / (x + 1)^2
-TestResult TestQuotientRule(float input_x)
+Dual<float> TestQuotientRule(float input_x)
 {
-    TestResult result;
-    result.tolerance = 1e-4f;
-    
     Dual<float> x = variable<float>(input_x);
     Dual<float> f = getValue(divide<float>(x, getValue(add<float>(x, Dual<float>::Create(1.0f, 0.0f)))));
-    
-    float denominator = input_x + 1.0f;
-    float expected_value = input_x / denominator;
-    float expected_derivative = 1.0f / (denominator * denominator);
-    
-    result.expected = expected_derivative;
-    result.actual = f.derivative;
-    result.passed = ApproxEqual(f.value, expected_value, result.tolerance) && 
-                   ApproxEqual(f.derivative, expected_derivative, result.tolerance);
-    
-    return result;
+    return f;
 }
 
 // Test power rule: f(x) = x^exponent, f'(x) = exponent*x^(exponent-1)
-TestResult TestPowerRule(float input_x, float exponent)
+Dual<float> TestPowerRule(float input_x, float exponent)
 {
-    TestResult result;
-    result.tolerance = 1e-4f;
-    
     Dual<float> x = variable<float>(input_x);
     Dual<float> f = getValue(power<float>(x, constant<float>(exponent)));
-    
-    float expected_value = pow(input_x, exponent);
-    float expected_derivative = exponent * pow(input_x, exponent - 1.0f);
-    
-    result.expected = expected_derivative;
-    result.actual = f.derivative;
-    result.passed = ApproxEqual(f.value, expected_value, result.tolerance) && 
-                   ApproxEqual(f.derivative, expected_derivative, result.tolerance);
-    
-    return result;
+    return f;
 }
 
 // Test complex expression: f(x) = exp(x) * sin(x) + x^2
 // f'(x) = exp(x)*sin(x) + exp(x)*cos(x) + 2x
-TestResult TestComplexExpression(float input_x)
+Dual<float> TestComplexExpression(float input_x)
 {
-    TestResult result;
-    result.tolerance = 1e-3f;
-    
     Dual<float> x = variable<float>(input_x);
     Dual<float> exp_sin = getValue(multiply<float>(getValue(expExpr<float>(x)), getValue(sinExpr<float>(x))));
     Dual<float> x_squared = getValue(multiply<float>(x, x));
     Dual<float> f = getValue(add<float>(exp_sin, x_squared));
-    
-    float exp_x = exp(input_x);
-    float sin_x = sin(input_x);
-    float cos_x = cos(input_x);
-    float expected_value = exp_x * sin_x + input_x * input_x;
-    float expected_derivative = exp_x * sin_x + exp_x * cos_x + 2.0f * input_x;
-    
-    result.expected = expected_derivative;
-    result.actual = f.derivative;
-    result.passed = ApproxEqual(f.value, expected_value, result.tolerance) && 
-                   ApproxEqual(f.derivative, expected_derivative, result.tolerance);
-    
-    return result;
+    return f;
 }
 
 // ============================================================================
@@ -229,87 +138,39 @@ TestResult TestComplexExpression(float input_x)
 
 // Test vector dot product differentiation
 // f(x) = dot(v, u) where v = [x, scalar*x] and u is constant
-TestResult TestVectorDotProduct(float input_x, float scalar, vector<float, 2> u)
+Dual<float> TestVectorDotProduct(float input_x, float scalar, vector<float, 2> u)
 {
-    TestResult result;
-    result.tolerance = 1e-4f;
-    
     Dual<float> x = variable<float>(input_x);
     Dual<vector<float, 2> > v = makeVector<float>(x, getValue(multiply<float>(Dual<float>::Create(scalar, 0.0f), x)));
     Dual<vector<float, 2> > u_dual = constantVector<float, 2>(u);
-    
     Dual<float> f = getValue(dotProduct<float, 2>(v, u_dual));
-    
-    // f(x) = x*u.x + scalar*x*u.y = x*(u.x + scalar*u.y)
-    // f'(x) = u.x + scalar*u.y
-    float expected_value = input_x * u.x + scalar * input_x * u.y;
-    float expected_derivative = u.x + scalar * u.y;
-    
-    result.expected = expected_derivative;
-    result.actual = f.derivative;
-    result.passed = ApproxEqual(f.value, expected_value, result.tolerance) &&
-                   ApproxEqual(f.derivative, expected_derivative, result.tolerance);
-    
-    return result;
+    return f;
 }
 
 // Test vector length differentiation
 // f(x) = |v| where v = [x, constant]
-TestResult TestVectorLength(float input_x, float constant_component)
+Dual<float> TestVectorLength(float input_x, float constant_component)
 {
-    TestResult result;
-    result.tolerance = 1e-4f;
-    
     Dual<float> x = variable<float>(input_x);
     Dual<vector<float, 2> > v = makeVector<float>(x, constant<float>(constant_component));
-    
     Dual<float> f = getValue(lengthExpr<float, 2>(v));
-    
-    // f(x) = sqrt(x^2 + constant^2)
-    // f'(x) = x / sqrt(x^2 + constant^2)
-    float length_val = sqrt(input_x * input_x + constant_component * constant_component);
-    float expected_value = length_val;
-    float expected_derivative = input_x / length_val;
-    
-    result.expected = expected_derivative;
-    result.actual = f.derivative;
-    result.passed = ApproxEqual(f.value, expected_value, result.tolerance) &&
-                   ApproxEqual(f.derivative, expected_derivative, result.tolerance);
-    
-    return result;
+    return f;
 }
 
 // Test vector normalization differentiation
 // f(x) = normalize([x, x]) - testing that it compiles and produces reasonable results
-TestResult TestVectorNormalize(float input_x)
+Dual<vector<float, 2> > TestVectorNormalize(float input_x)
 {
-    TestResult result;
-    result.tolerance = 1e-4f;
-    
     Dual<float> x = variable<float>(input_x);
     Dual<vector<float, 2> > v = makeVector<float>(x, x);
-    
     Dual<vector<float, 2> > f = getValue(normalizeExpr<float, 2>(v));
-    
-    // normalize([x,x]) = [x/sqrt(2x^2), x/sqrt(2x^2)] = [x/(|x|*sqrt(2)), x/(|x|*sqrt(2))]
-    // For x > 0: normalize([x,x]) = [1/sqrt(2), 1/sqrt(2)]
-    float expected_component = (input_x >= 0.0f ? 1.0f : -1.0f) / sqrt(2.0f);
-    
-    result.expected = expected_component;
-    result.actual = f.value.x;
-    result.passed = ApproxEqual(f.value.x, expected_component, result.tolerance) &&
-                   ApproxEqual(f.value.y, expected_component, result.tolerance);
-    
-    return result;
+    return f;
 }
 
 // Test matrix multiplication differentiation
 // f(x) = A * v where A = [[x, 0], [0, 1]] and v is constant
-TestResult TestMatrixMultiplication(float input_x, vector<float, 2> v_const)
+Dual<vector<float, 2> > TestMatrixMultiplication(float input_x, vector<float, 2> v_const)
 {
-    TestResult result;
-    result.tolerance = 1e-4f;
-    
     Dual<float> x = variable<float>(input_x);
     
     // Create matrix [[x, 0], [0, 1]]
@@ -318,28 +179,15 @@ TestResult TestMatrixMultiplication(float input_x, vector<float, 2> v_const)
     Dual<matrix<float, 2, 2> > A = Dual<matrix<float, 2, 2> >::Create(mat_val, mat_deriv);
     
     Dual<vector<float, 2> > v = constantVector<float, 2>(v_const);
-    
     Dual<vector<float, 2> > f = getValue(matMul<float, 2, 2, 2>(A, v));
-    
-    // Result = [x*v.x, 1*v.y] = [x*v.x, v.y]
-    // d/dx of result = [v.x, 0]
-    result.expected = v_const.x;  // derivative of first component should be v.x
-    result.actual = f.derivative.x;
-    result.passed = ApproxEqual(f.value.x, input_x * v_const.x, result.tolerance) &&
-                   ApproxEqual(f.value.y, v_const.y, result.tolerance) &&
-                   ApproxEqual(f.derivative.x, v_const.x, result.tolerance);
-    
-    return result;
+    return f;
 }
 
 // Test matrix determinant differentiation  
 // f(x) = det([[x, a], [b, c]]) = x*c - a*b
 // f'(x) = c
-TestResult TestMatrixDeterminant(float input_x, float a, float b, float c)
+Dual<float> TestMatrixDeterminant(float input_x, float a, float b, float c)
 {
-    TestResult result;
-    result.tolerance = 1e-4f;
-    
     Dual<float> x = variable<float>(input_x);
     
     // Create matrix [[x, a], [b, c]]
@@ -348,54 +196,130 @@ TestResult TestMatrixDeterminant(float input_x, float a, float b, float c)
     Dual<matrix<float, 2, 2> > A = Dual<matrix<float, 2, 2> >::Create(mat_val, mat_deriv);
     
     Dual<float> f = getValue(determinantExpr<float, 2>(A));
-    
-    float expected_value = input_x * c - a * b;
-    float expected_derivative = c;
-    
-    result.expected = expected_derivative;
-    result.actual = f.derivative;
-    result.passed = ApproxEqual(f.value, expected_value, result.tolerance) &&
-                   ApproxEqual(f.derivative, expected_derivative, result.tolerance);
-    
-    return result;
+    return f;
 }
 
-// Run all tests with the same input values as the original hardcoded tests
-void RunAllTests()
+// Compute shader entry point to run all tests and write results to buffer
+[numthreads(8, 1, 1)]
+void RunAllTests(uint3 DispatchThreadID : SV_DispatchThreadID)
 {
-    // Array of test functions and their names
-    // Note: In actual HLSL, you'd need to handle this differently
-    // as function pointers aren't directly supported
+    uint threadIndex = DispatchThreadID.x;
     
-    TestResult results[15];  // Updated for all tests including matrix determinant
+    // Read test inputs from CPU-provided buffer for this thread
+    ADTestInputs inputs = InputBuffer[threadIndex];
     
-    // Use the same input values as the original hardcoded tests
-    results[0] = TestBasicArithmetic(5.0f);  // Original: x = 5.0f
-    results[1] = TestQuadratic(3.0f);        // Original: x = 3.0f
-    results[2] = TestTrigonometric(0.0f);    // Original: x = 0.0f
-    results[3] = TestExponential(0.0f);      // Original: x = 0.0f
-    results[4] = TestLogarithm(1.0f);        // Original: x = 1.0f
-    results[5] = TestChainRule(0.0f);        // Original: x = 0.0f
-    results[6] = TestProductRule(0.0f);      // Original: x = 0.0f
-    results[7] = TestQuotientRule(0.0f);     // Original: x = 0.0f
-    results[8] = TestPowerRule(2.0f, 3.0f);  // Original: x = 2.0f, exponent = 3.0f
-    results[9] = TestComplexExpression(0.0f); // Original: x = 0.0f
+    // Collect all test results in local array
+    ADTestResult results[15];
     
-    // Vector and matrix tests with original values
-    results[10] = TestVectorDotProduct(2.0f, 2.0f, vector<float, 2>(1.0f, 3.0f)); // Original: x=2, v=[x,2x], u=[1,3]
-    results[11] = TestVectorLength(3.0f, 0.0f);  // Original: x = 3.0f, v = [x, 0]
-    results[12] = TestVectorNormalize(1.0f);     // Original: x = 1.0f
-    results[13] = TestMatrixMultiplication(3.0f, vector<float, 2>(1.0f, 2.0f)); // Original: x=3, v=[1,2]
-    results[14] = TestMatrixDeterminant(2.0f, 1.0f, 2.0f, 3.0f); // Original: x=2, matrix=[[x,1],[2,3]]
-    
-    // Count passed tests
-    int passed_count = 0;
-    for (int i = 0; i < 15; i++)
+    // Test 0: Basic Arithmetic - f(x) = 2x + 3
     {
-        if (results[i].passed)
-            passed_count++;
+        Dual<float> result = TestBasicArithmetic(inputs.basic_arithmetic_x);
+        results[0].value = result.value;
+        results[0].derivative = result.derivative;
     }
     
-    // In a real application, you'd output these results somehow
-    // For now, they're just available for inspection
+    // Test 1: Quadratic - f(x) = x^2
+    {
+        Dual<float> result = TestQuadratic(inputs.quadratic_x);
+        results[1].value = result.value;
+        results[1].derivative = result.derivative;
+    }
+    
+    // Test 2: Trigonometric - f(x) = sin(x)
+    {
+        Dual<float> result = TestTrigonometric(inputs.trigonometric_x);
+        results[2].value = result.value;
+        results[2].derivative = result.derivative;
+    }
+    
+    // Test 3: Exponential - f(x) = exp(x)
+    {
+        Dual<float> result = TestExponential(inputs.exponential_x);
+        results[3].value = result.value;
+        results[3].derivative = result.derivative;
+    }
+    
+    // Test 4: Logarithm - f(x) = log(x)
+    {
+        Dual<float> result = TestLogarithm(inputs.logarithm_x);
+        results[4].value = result.value;
+        results[4].derivative = result.derivative;
+    }
+    
+    // Test 5: Chain Rule - f(x) = sin(2x)
+    {
+        Dual<float> result = TestChainRule(inputs.chain_rule_x);
+        results[5].value = result.value;
+        results[5].derivative = result.derivative;
+    }
+    
+    // Test 6: Product Rule - f(x) = x * sin(x)
+    {
+        Dual<float> result = TestProductRule(inputs.product_rule_x);
+        results[6].value = result.value;
+        results[6].derivative = result.derivative;
+    }
+    
+    // Test 7: Quotient Rule - f(x) = x / (x + 1)
+    {
+        Dual<float> result = TestQuotientRule(inputs.quotient_rule_x);
+        results[7].value = result.value;
+        results[7].derivative = result.derivative;
+    }
+    
+    // Test 8: Power Rule - f(x) = x^exponent
+    {
+        Dual<float> result = TestPowerRule(inputs.power_rule_x, inputs.power_rule_exponent);
+        results[8].value = result.value;
+        results[8].derivative = result.derivative;
+    }
+    
+    // Test 9: Complex Expression - f(x) = exp(x) * sin(x) + x^2
+    {
+        Dual<float> result = TestComplexExpression(inputs.complex_expression_x);
+        results[9].value = result.value;
+        results[9].derivative = result.derivative;
+    }
+    
+    // Test 10: Vector Dot Product
+    {
+        Dual<float> result = TestVectorDotProduct(inputs.vector_dot_x, inputs.vector_dot_scalar, inputs.vector_dot_u);
+        results[10].value = result.value;
+        results[10].derivative = result.derivative;
+    }
+    
+    // Test 11: Vector Length
+    {
+        Dual<float> result = TestVectorLength(inputs.vector_length_x, inputs.vector_length_constant);
+        results[11].value = result.value;
+        results[11].derivative = result.derivative;
+    }
+    
+    // Test 12: Vector Normalize (store x component only for simplicity)
+    {
+        Dual<vector<float, 2> > result = TestVectorNormalize(inputs.vector_normalize_x);
+        results[12].value = result.value.x;
+        results[12].derivative = result.derivative.x;
+    }
+    
+    // Test 13: Matrix Multiplication (store x component only for simplicity)
+    {
+        Dual<vector<float, 2> > result = TestMatrixMultiplication(inputs.matrix_mult_x, inputs.matrix_mult_v);
+        results[13].value = result.value.x;
+        results[13].derivative = result.derivative.x;
+    }
+    
+    // Test 14: Matrix Determinant
+    {
+        Dual<float> result = TestMatrixDeterminant(inputs.matrix_det_x, inputs.matrix_det_a, inputs.matrix_det_b, inputs.matrix_det_c);
+        results[14].value = result.value;
+        results[14].derivative = result.derivative;
+    }
+    
+    // Write all results to structured buffer at thread-specific indices
+    uint baseIndex = threadIndex * 15;
+    for (int i = 0; i < 15; i++)
+    {
+        ResultBuffer[baseIndex + i] = results[i];
+    }
 }
