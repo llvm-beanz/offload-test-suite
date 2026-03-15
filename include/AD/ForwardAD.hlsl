@@ -111,6 +111,7 @@ struct Dual
 template<typename T, typename L, typename R>
 struct AddExpr
 {
+    using ResultType = Dual<T>;
     L left;
     R right;
     
@@ -127,6 +128,7 @@ struct AddExpr
 template<typename T, typename L, typename R>
 struct SubExpr
 {
+    using ResultType = Dual<T>;
     L left;
     R right;
     
@@ -143,6 +145,7 @@ struct SubExpr
 template<typename T, typename L, typename R>
 struct MulExpr
 {
+    using ResultType = Dual<T>;
     L left;
     R right;
     
@@ -160,6 +163,7 @@ struct MulExpr
 template<typename T, typename L, typename R>
 struct DivExpr
 {
+    using ResultType = Dual<T>;
     L left;
     R right;
     
@@ -178,6 +182,7 @@ struct DivExpr
 template<typename T, typename L, typename R>
 struct PowExpr
 {
+    using ResultType = Dual<T>;
     L base;
     R exponent;
     
@@ -201,6 +206,7 @@ struct PowExpr
 template<typename T, typename E>
 struct NegExpr
 {
+    using ResultType = Dual<T>;
     E expr;
     
     Dual<T> eval()
@@ -214,6 +220,7 @@ struct NegExpr
 template<typename T, typename E>
 struct SinExpr
 {
+    using ResultType = Dual<T>;
     E expr;
     
     Dual<T> eval()
@@ -228,6 +235,7 @@ struct SinExpr
 template<typename T, typename E>
 struct CosExpr
 {
+    using ResultType = Dual<T>;
     E expr;
     
     Dual<T> eval()
@@ -242,6 +250,7 @@ struct CosExpr
 template<typename T, typename E>
 struct ExpExpr
 {
+    using ResultType = Dual<T>;
     E expr;
     
     Dual<T> eval()
@@ -257,6 +266,7 @@ struct ExpExpr
 template<typename T, typename E>
 struct LogExpr
 {
+    using ResultType = Dual<T>;
     E expr;
     
     Dual<T> eval()
@@ -271,6 +281,7 @@ struct LogExpr
 template<typename T, typename E>
 struct SqrtExpr
 {
+    using ResultType = Dual<T>;
     E expr;
     
     Dual<T> eval()
@@ -287,71 +298,12 @@ struct SqrtExpr
 // ============================================================================
 
 // Extract Dual from templated expression types
-template<typename T, typename L, typename R>
-Dual<T> getValue(AddExpr<T, L, R> expr)
+template <typename T>
+typename T::ResultType getValue(T value)
 {
-    return expr.eval();
+    return value.eval();
 }
 
-template<typename T, typename L, typename R>
-Dual<T> getValue(SubExpr<T, L, R> expr)
-{
-    return expr.eval();
-}
-
-template<typename T, typename L, typename R>
-Dual<T> getValue(MulExpr<T, L, R> expr)
-{
-    return expr.eval();
-}
-
-template<typename T, typename L, typename R>
-Dual<T> getValue(DivExpr<T, L, R> expr)
-{
-    return expr.eval();
-}
-
-template<typename T, typename L, typename R>
-Dual<T> getValue(PowExpr<T, L, R> expr)
-{
-    return expr.eval();
-}
-
-template<typename T, typename E>
-Dual<T> getValue(NegExpr<T, E> expr)
-{
-    return expr.eval();
-}
-
-template<typename T, typename E>
-Dual<T> getValue(SinExpr<T, E> expr)
-{
-    return expr.eval();
-}
-
-template<typename T, typename E>
-Dual<T> getValue(CosExpr<T, E> expr)
-{
-    return expr.eval();
-}
-
-template<typename T, typename E>
-Dual<T> getValue(ExpExpr<T, E> expr)
-{
-    return expr.eval();
-}
-
-template<typename T, typename E>
-Dual<T> getValue(LogExpr<T, E> expr)
-{
-    return expr.eval();
-}
-
-template<typename T, typename E>
-Dual<T> getValue(SqrtExpr<T, E> expr)
-{
-    return expr.eval();
-}
 
 // Extract Dual from Dual (identity)
 template<typename T>
@@ -617,6 +569,7 @@ Dual<matrix<T, N, M> > constantMatrix(matrix<T, N, M> value)
 template<typename T, int N, typename L, typename R>
 struct DotExpr
 {
+    using ResultType = Dual<T>;
     L left;
     R right;
     
@@ -637,6 +590,7 @@ struct DotExpr
 template<typename T, typename L, typename R>
 struct CrossExpr
 {
+    using ResultType = Dual<vector<T, 3> >;
     L left;
     R right;
     
@@ -657,6 +611,7 @@ struct CrossExpr
 template<typename T, int N, typename E>
 struct LengthExpr
 {
+    using ResultType = Dual<T>;
     E expr;
     
     Dual<T> eval()
@@ -675,6 +630,7 @@ struct LengthExpr
 template<typename T, int N, typename E>
 struct NormalizeExpr
 {
+    using ResultType = Dual<vector<T, N> >;
     E expr;
     
     Dual<vector<T, N> > eval()
@@ -699,10 +655,11 @@ struct NormalizeExpr
 template<typename T, int N, int K, int M, typename L, typename R>
 struct MatMulExpr
 {
+    using ResultType = Dual<vector<T, N> >;
     L left;   // Matrix NxK
     R right;  // Matrix KxM or Vector K
     
-    // Returns either Dual<matrix<T,N,M>> for matrix*matrix or Dual<vector<T,N>> for matrix*vector
+    // Returns either Dual<matrix<T,N,M> > for matrix*matrix or Dual<vector<T,N> > for matrix*vector
     // We'll use a specific implementation that works with common cases
     Dual<vector<T, N> > eval()  // Assuming matrix-vector multiplication for now
     {
@@ -721,6 +678,7 @@ struct MatMulExpr
 template<typename T, int N, int M, typename E>
 struct TransposeExpr
 {
+    using ResultType = Dual<matrix<T, M, N> >;
     E expr;
     
     Dual<matrix<T, M, N> > eval()  // Transpose flips dimensions
@@ -739,6 +697,7 @@ struct TransposeExpr
 template<typename T, int N, typename E>
 struct DetExpr
 {
+    using ResultType = Dual<T>;
     E expr;
     
     Dual<T> eval()
@@ -772,47 +731,6 @@ struct DetExpr
 // Vector and Matrix getValue Specializations
 // ============================================================================
 
-template<typename T, int N, typename L, typename R>
-Dual<T> getValue(DotExpr<T, N, L, R> expr)
-{
-    return expr.eval();
-}
-
-template<typename T, typename L, typename R>
-Dual<vector<T, 3> > getValue(CrossExpr<T, L, R> expr)
-{
-    return expr.eval();
-}
-
-template<typename T, int N, typename E>
-Dual<T> getValue(LengthExpr<T, N, E> expr)
-{
-    return expr.eval();
-}
-
-template<typename T, int N, typename E>
-Dual<vector<T, N> > getValue(NormalizeExpr<T, N, E> expr)
-{
-    return expr.eval();
-}
-
-template<typename T, int N, int K, int M, typename L, typename R>
-Dual<vector<T, N> > getValue(MatMulExpr<T, N, K, M, L, R> expr)
-{
-    return expr.eval();
-}
-
-template<typename T, int N, int M, typename E>
-Dual<matrix<T, M, N> > getValue(TransposeExpr<T, N, M, E> expr)
-{
-    return expr.eval();
-}
-
-template<typename T, int N, typename E>
-Dual<T> getValue(DetExpr<T, N, E> expr)
-{
-    return expr.eval();
-}
 
 // ============================================================================
 // Vector and Matrix Operation Functions
