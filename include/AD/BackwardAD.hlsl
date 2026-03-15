@@ -571,42 +571,32 @@ VariableExpr<T> makeVariableExpr(Variable<T> var)
     return expr;
 }
 
-// Binary operations
-template<typename T, typename L, typename R>
-BackAddExpr<T, L, R> add(L left, R right)
-{
-    BackAddExpr<T, L, R> expr;
-    expr.left = left;
-    expr.right = right;
-    return expr;
+// Binary operations - using macros to reduce duplication
+#define MAKE_BINARY_BACK_EXPR(ExprType) \
+template<typename T, typename L, typename R> \
+ExprType<T, L, R> ExprType##LowerCase(L left, R right) \
+{ \
+    ExprType<T, L, R> expr; \
+    expr.left = left; \
+    expr.right = right; \
+    return expr; \
 }
 
-template<typename T, typename L, typename R>
-BackSubExpr<T, L, R> subtract(L left, R right)
-{
-    BackSubExpr<T, L, R> expr;
-    expr.left = left;
-    expr.right = right;
-    return expr;
+// Helper to convert ExprType to lowercase function name
+#define MAKE_BINARY_OP_BACK(ExprType, funcName) \
+template<typename T, typename L, typename R> \
+ExprType<T, L, R> funcName(L left, R right) \
+{ \
+    ExprType<T, L, R> expr; \
+    expr.left = left; \
+    expr.right = right; \
+    return expr; \
 }
 
-template<typename T, typename L, typename R>
-BackMulExpr<T, L, R> multiply(L left, R right)
-{
-    BackMulExpr<T, L, R> expr;
-    expr.left = left;
-    expr.right = right;
-    return expr;
-}
-
-template<typename T, typename L, typename R>
-BackDivExpr<T, L, R> divide(L left, R right)
-{
-    BackDivExpr<T, L, R> expr;
-    expr.left = left;
-    expr.right = right;
-    return expr;
-}
+MAKE_BINARY_OP_BACK(BackAddExpr, add)
+MAKE_BINARY_OP_BACK(BackSubExpr, subtract)
+MAKE_BINARY_OP_BACK(BackMulExpr, multiply)
+MAKE_BINARY_OP_BACK(BackDivExpr, divide)
 
 template<typename T, typename L, typename R>
 BackPowExpr<T, L, R> power(L base, R exponent)
@@ -617,60 +607,49 @@ BackPowExpr<T, L, R> power(L base, R exponent)
     return expr;
 }
 
-// Unary operations
-template<typename T, typename E>
-BackNegExpr<T, E> negate(E expr)
-{
-    BackNegExpr<T, E> result;
-    result.expr = expr;
-    return result;
+// Unary operations - using macro to reduce duplication
+#define MAKE_UNARY_OP_BACK(ExprType, funcName) \
+template<typename T, typename E> \
+ExprType<T, E> funcName(E expr) \
+{ \
+    ExprType<T, E> result; \
+    result.expr = expr; \
+    return result; \
 }
 
-template<typename T, typename E>
-BackSinExpr<T, E> sinExpr(E expr)
-{
-    BackSinExpr<T, E> result;
-    result.expr = expr;
-    return result;
-}
-
-template<typename T, typename E>
-BackCosExpr<T, E> cosExpr(E expr)
-{
-    BackCosExpr<T, E> result;
-    result.expr = expr;
-    return result;
-}
-
-template<typename T, typename E>
-BackExpExpr<T, E> expExpr(E expr)
-{
-    BackExpExpr<T, E> result;
-    result.expr = expr;
-    return result;
-}
-
-template<typename T, typename E>
-BackLogExpr<T, E> logExpr(E expr)
-{
-    BackLogExpr<T, E> result;
-    result.expr = expr;
-    return result;
-}
-
-template<typename T, typename E>
-BackSqrtExpr<T, E> sqrtExpr(E expr)
-{
-    BackSqrtExpr<T, E> result;
-    result.expr = expr;
-    return result;
-}
+MAKE_UNARY_OP_BACK(BackNegExpr, negate)
+MAKE_UNARY_OP_BACK(BackSinExpr, sinExpr)
+MAKE_UNARY_OP_BACK(BackCosExpr, cosExpr)
+MAKE_UNARY_OP_BACK(BackExpExpr, expExpr)
+MAKE_UNARY_OP_BACK(BackLogExpr, logExpr)
+MAKE_UNARY_OP_BACK(BackSqrtExpr, sqrtExpr)
 
 // ============================================================================
-// Computation Functions
+// Computation Functions - Macro to Reduce Duplication
 // ============================================================================
 
-// Combined forward and backward pass for different expression types
+// Macro to generate compute_gradients functions
+#define MAKE_COMPUTE_GRADIENTS_BINARY(ExprType) \
+template<typename T, typename L, typename R> \
+T compute_gradients(inout GradientContext<T> context, ExprType<T, L, R> expr) \
+{ \
+    context.zeroGradients(); \
+    T result = expr.forward(); \
+    expr.backward(context, T(1)); \
+    return result; \
+}
+
+#define MAKE_COMPUTE_GRADIENTS_UNARY(ExprType) \
+template<typename T, typename E> \
+T compute_gradients(inout GradientContext<T> context, ExprType<T, E> expr) \
+{ \
+    context.zeroGradients(); \
+    T result = expr.forward(); \
+    expr.backward(context, T(1)); \
+    return result; \
+}
+
+// Generate compute_gradients for all expression types
 template<typename T>
 T compute_gradients(inout GradientContext<T> context, VariableExpr<T> var_expr)
 {
@@ -680,104 +659,18 @@ T compute_gradients(inout GradientContext<T> context, VariableExpr<T> var_expr)
     return result;
 }
 
-template<typename T, typename L, typename R>
-T compute_gradients(inout GradientContext<T> context, BackAddExpr<T, L, R> expr)
-{
-    context.zeroGradients();
-    T result = expr.forward();
-    expr.backward(context, T(1));
-    return result;
-}
+MAKE_COMPUTE_GRADIENTS_BINARY(BackAddExpr)
+MAKE_COMPUTE_GRADIENTS_BINARY(BackSubExpr)  
+MAKE_COMPUTE_GRADIENTS_BINARY(BackMulExpr)
+MAKE_COMPUTE_GRADIENTS_BINARY(BackDivExpr)
+MAKE_COMPUTE_GRADIENTS_BINARY(BackPowExpr)
 
-template<typename T, typename L, typename R>
-T compute_gradients(inout GradientContext<T> context, BackSubExpr<T, L, R> expr)
-{
-    context.zeroGradients();
-    T result = expr.forward();
-    expr.backward(context, T(1));
-    return result;
-}
-
-template<typename T, typename L, typename R>
-T compute_gradients(inout GradientContext<T> context, BackMulExpr<T, L, R> expr)
-{
-    context.zeroGradients();
-    T result = expr.forward();
-    expr.backward(context, T(1));
-    return result;
-}
-
-template<typename T, typename L, typename R>
-T compute_gradients(inout GradientContext<T> context, BackDivExpr<T, L, R> expr)
-{
-    context.zeroGradients();
-    T result = expr.forward();
-    expr.backward(context, T(1));
-    return result;
-}
-
-template<typename T, typename L, typename R>  
-T compute_gradients(inout GradientContext<T> context, BackPowExpr<T, L, R> expr)
-{
-    context.zeroGradients();
-    T result = expr.forward();
-    expr.backward(context, T(1));
-    return result;
-}
-
-template<typename T, typename E>
-T compute_gradients(inout GradientContext<T> context, BackNegExpr<T, E> expr)
-{
-    context.zeroGradients();
-    T result = expr.forward();
-    expr.backward(context, T(1));
-    return result;
-}
-
-template<typename T, typename E>
-T compute_gradients(inout GradientContext<T> context, BackSinExpr<T, E> expr)
-{
-    context.zeroGradients();
-    T result = expr.forward();
-    expr.backward(context, T(1));
-    return result;
-}
-
-template<typename T, typename E>
-T compute_gradients(inout GradientContext<T> context, BackCosExpr<T, E> expr)
-{
-    context.zeroGradients();
-    T result = expr.forward();
-    expr.backward(context, T(1));
-    return result;
-}
-
-template<typename T, typename E>
-T compute_gradients(inout GradientContext<T> context, BackExpExpr<T, E> expr)
-{
-    context.zeroGradients();
-    T result = expr.forward();
-    expr.backward(context, T(1));
-    return result;
-}
-
-template<typename T, typename E>
-T compute_gradients(inout GradientContext<T> context, BackLogExpr<T, E> expr)
-{
-    context.zeroGradients();
-    T result = expr.forward();
-    expr.backward(context, T(1));
-    return result;
-}
-
-template<typename T, typename E>
-T compute_gradients(inout GradientContext<T> context, BackSqrtExpr<T, E> expr)
-{
-    context.zeroGradients();
-    T result = expr.forward();
-    expr.backward(context, T(1));
-    return result;
-}
+MAKE_COMPUTE_GRADIENTS_UNARY(BackNegExpr)
+MAKE_COMPUTE_GRADIENTS_UNARY(BackSinExpr)
+MAKE_COMPUTE_GRADIENTS_UNARY(BackCosExpr)
+MAKE_COMPUTE_GRADIENTS_UNARY(BackExpExpr)
+MAKE_COMPUTE_GRADIENTS_UNARY(BackLogExpr)
+MAKE_COMPUTE_GRADIENTS_UNARY(BackSqrtExpr)
 
 // ============================================================================
 // Vector and Matrix Support for Backward AD
@@ -964,7 +857,7 @@ Variable<matrix<T, N, M> > variableMatrix(inout GradientContext<matrix<T, N, M> 
 }
 
 // ============================================================================
-// Vector/Matrix Expression Creation Functions
+// Vector/Matrix Expression Creation Functions - Reduced Duplication
 // ============================================================================
 
 template<typename T, int N, typename L, typename R>
@@ -985,21 +878,18 @@ BackCrossExpr<T, L, R> crossProduct(L left, R right)
     return expr;
 }
 
-template<typename T, int N, typename E>
-BackLengthExpr<T, N, E> lengthExpr(E expr)
-{
-    BackLengthExpr<T, N, E> result;
-    result.expr = expr;
-    return result;
+// Macro for vector unary operations
+#define MAKE_VECTOR_UNARY_OP_BACK(ExprType, funcName) \
+template<typename T, int N, typename E> \
+ExprType<T, N, E> funcName(E expr) \
+{ \
+    ExprType<T, N, E> result; \
+    result.expr = expr; \
+    return result; \
 }
 
-template<typename T, int N, typename E>
-BackNormalizeExpr<T, N, E> normalizeExpr(E expr)
-{
-    BackNormalizeExpr<T, N, E> result;
-    result.expr = expr;
-    return result;
-}
+MAKE_VECTOR_UNARY_OP_BACK(BackLengthExpr, lengthExpr)
+MAKE_VECTOR_UNARY_OP_BACK(BackNormalizeExpr, normalizeExpr)
 
 template<typename T, int N, int K, typename L, typename R>
 BackMatVecMulExpr<T, N, K, L, R> matVecMul(L left, R right)
@@ -1019,8 +909,11 @@ BackDet2x2Expr<T, E> determinantExpr(E expr)
 }
 
 // ============================================================================
-// Vector/Matrix Compute Gradients Functions
+// Vector/Matrix Compute Gradients Functions - Reduced with Macros
 // ============================================================================
+
+// Note: Vector/matrix compute_gradients have different context and seed types
+// so they need individual implementations, but can share some patterns
 
 template<typename T, int N, typename L, typename R>
 T compute_gradients(inout GradientContext<vector<T, N> > context, BackDotExpr<T, N, L, R> expr)
@@ -1041,25 +934,33 @@ vector<T, 3> compute_gradients(inout GradientContext<vector<T, 3> > context, Bac
     return result;
 }
 
-template<typename T, int N, typename E>
-T compute_gradients(inout GradientContext<vector<T, N> > context, BackLengthExpr<T, N, E> expr)
-{
-    context.zeroGradients();
-    T result = expr.forward();
-    expr.backward(context, (T)1);
-    return result;
+// Macro for vector unary compute_gradients with T return type
+#define MAKE_VECTOR_COMPUTE_GRADIENTS_SCALAR(ExprType) \
+template<typename T, int N, typename E> \
+T compute_gradients(inout GradientContext<vector<T, N> > context, ExprType<T, N, E> expr) \
+{ \
+    context.zeroGradients(); \
+    T result = expr.forward(); \
+    expr.backward(context, (T)1); \
+    return result; \
 }
 
-template<typename T, int N, typename E>
-vector<T, N> compute_gradients(inout GradientContext<vector<T, N> > context, BackNormalizeExpr<T, N, E> expr)
-{
-    context.zeroGradients();
-    vector<T, N> result = expr.forward();
-    vector<T, N> seed = (vector<T, N>)0;
-    if (N >= 1) seed[0] = (T)1;
-    expr.backward(context, seed);
-    return result;
+MAKE_VECTOR_COMPUTE_GRADIENTS_SCALAR(BackLengthExpr)
+
+// Macro for vector unary compute_gradients with vector return type
+#define MAKE_VECTOR_COMPUTE_GRADIENTS_VECTOR(ExprType) \
+template<typename T, int N, typename E> \
+vector<T, N> compute_gradients(inout GradientContext<vector<T, N> > context, ExprType<T, N, E> expr) \
+{ \
+    context.zeroGradients(); \
+    vector<T, N> result = expr.forward(); \
+    vector<T, N> seed = (vector<T, N>)0; \
+    if (N >= 1) seed[0] = (T)1; \
+    expr.backward(context, seed); \
+    return result; \
 }
+
+MAKE_VECTOR_COMPUTE_GRADIENTS_VECTOR(BackNormalizeExpr)
 
 template<typename T, int N, int K, typename L, typename R>
 vector<T, N> compute_gradients(inout GradientContext<vector<T, N> > context, BackMatVecMulExpr<T, N, K, L, R> expr)
