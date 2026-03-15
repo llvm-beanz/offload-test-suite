@@ -314,42 +314,22 @@ Dual<T> getValue(Dual<T> d)
 
 // Removed generic getValue to avoid ambiguity with expression specializations
 
-// Helper functions to create templated expression templates
-template<typename T, typename L, typename R>
-AddExpr<T, L, R> makeAddExpr(L left, R right)
-{
-    AddExpr<T, L, R> result;
-    result.left = left;
-    result.right = right;
-    return result;
+// Helper functions to create templated expression templates - using macros to reduce duplication
+
+#define MAKE_BINARY_EXPR(ExprType) \
+template<typename T, typename L, typename R> \
+ExprType<T, L, R> make##ExprType(L left, R right) \
+{ \
+    ExprType<T, L, R> result; \
+    result.left = left; \
+    result.right = right; \
+    return result; \
 }
 
-template<typename T, typename L, typename R>
-SubExpr<T, L, R> makeSubExpr(L left, R right)
-{
-    SubExpr<T, L, R> result;
-    result.left = left;
-    result.right = right;
-    return result;
-}
-
-template<typename T, typename L, typename R>
-MulExpr<T, L, R> makeMulExpr(L left, R right)
-{
-    MulExpr<T, L, R> result;
-    result.left = left;
-    result.right = right;
-    return result;
-}
-
-template<typename T, typename L, typename R>
-DivExpr<T, L, R> makeDivExpr(L left, R right)
-{
-    DivExpr<T, L, R> result;
-    result.left = left;
-    result.right = right;
-    return result;
-}
+MAKE_BINARY_EXPR(AddExpr)
+MAKE_BINARY_EXPR(SubExpr)
+MAKE_BINARY_EXPR(MulExpr)
+MAKE_BINARY_EXPR(DivExpr)
 
 template<typename T, typename L, typename R>
 PowExpr<T, L, R> makePowExpr(L base, R exponent)
@@ -360,82 +340,38 @@ PowExpr<T, L, R> makePowExpr(L base, R exponent)
     return result;
 }
 
-template<typename T, typename E>
-NegExpr<T, E> makeNegExpr(E expr)
-{
-    NegExpr<T, E> result;
-    result.expr = expr;
-    return result;
+#define MAKE_UNARY_EXPR(ExprType) \
+template<typename T, typename E> \
+ExprType<T, E> make##ExprType(E expr) \
+{ \
+    ExprType<T, E> result; \
+    result.expr = expr; \
+    return result; \
 }
 
-template<typename T, typename E>
-SinExpr<T, E> makeSinExpr(E expr)
-{
-    SinExpr<T, E> result;
-    result.expr = expr;
-    return result;
-}
-
-template<typename T, typename E>
-CosExpr<T, E> makeCosExpr(E expr)
-{
-    CosExpr<T, E> result;
-    result.expr = expr;
-    return result;
-}
-
-template<typename T, typename E>
-ExpExpr<T, E> makeExpExpr(E expr)
-{
-    ExpExpr<T, E> result;
-    result.expr = expr;
-    return result;
-}
-
-template<typename T, typename E>
-LogExpr<T, E> makeLogExpr(E expr)
-{
-    LogExpr<T, E> result;
-    result.expr = expr;
-    return result;
-}
-
-template<typename T, typename E>
-SqrtExpr<T, E> makeSqrtExpr(E expr)
-{
-    SqrtExpr<T, E> result;
-    result.expr = expr;
-    return result;
-}
+MAKE_UNARY_EXPR(NegExpr)
+MAKE_UNARY_EXPR(SinExpr)
+MAKE_UNARY_EXPR(CosExpr)
+MAKE_UNARY_EXPR(ExpExpr)
+MAKE_UNARY_EXPR(LogExpr)
+MAKE_UNARY_EXPR(SqrtExpr)
 
 // ============================================================================
 // Named Functions for Operations with Type Support
 // ============================================================================
 
-// Templated operation functions
-template<typename T, typename L, typename R>
-AddExpr<T, L, R> add(L left, R right)
-{
-    return makeAddExpr<T>(left, right);
+// Templated operation functions - using macro to reduce duplication
+#define MAKE_BINARY_OP(opName, ExprType) \
+template<typename T, typename L, typename R> \
+ExprType<T, L, R> opName(L left, R right) \
+{ \
+    return make##ExprType<T>(left, right); \
 }
 
-template<typename T, typename L, typename R>
-SubExpr<T, L, R> subtract(L left, R right)
-{
-    return makeSubExpr<T>(left, right);
-}
-
-template<typename T, typename L, typename R>
-MulExpr<T, L, R> multiply(L left, R right)
-{
-    return makeMulExpr<T>(left, right);
-}
-
-template<typename T, typename L, typename R>
-DivExpr<T, L, R> divide(L left, R right)
-{
-    return makeDivExpr<T>(left, right);
-}
+MAKE_BINARY_OP(add, AddExpr)
+MAKE_BINARY_OP(subtract, SubExpr)
+MAKE_BINARY_OP(multiply, MulExpr)
+MAKE_BINARY_OP(divide, DivExpr)
 
 template<typename T, typename L, typename R>
 PowExpr<T, L, R> power(L base, R exponent)
@@ -443,42 +379,40 @@ PowExpr<T, L, R> power(L base, R exponent)
     return makePowExpr<T>(base, exponent);
 }
 
-template<typename T, typename E>
-NegExpr<T, E> negate(E expr)
-{
-    return makeNegExpr<T>(expr);
+#define MAKE_UNARY_OP(opName, ExprType) \
+template<typename T, typename E> \
+ExprType<T, E> opName(E expr) \
+{ \
+    return make##ExprType<T>(expr); \
 }
 
-// Mathematical Function Templates
-template<typename T, typename E>
-SinExpr<T, E> sinExpr(E expr)
-{
-    return makeSinExpr<T>(expr);
+MAKE_UNARY_OP(negate, NegExpr)
+
+// Mathematical Function Templates - using macros to reduce duplication
+#define MAKE_MATH_EXPR_OP(mathName, ExprType) \
+template<typename T, typename E> \
+ExprType<T, E> mathName##Expr(E expr) \
+{ \
+    return make##ExprType<T>(expr); \
 }
 
+MAKE_MATH_EXPR_OP(sin, SinExpr)
+MAKE_MATH_EXPR_OP(cos, CosExpr)
+MAKE_MATH_EXPR_OP(exp, ExpExpr)
+MAKE_MATH_EXPR_OP(log, LogExpr)
+MAKE_MATH_EXPR_OP(sqrt, SqrtExpr)
+
+// Direct dual functions for immediate evaluation
 template<typename T>
 Dual<T> sinDual(Dual<T> d)
 {
     return Dual<T>::Create(sin(d.value), cos(d.value) * d.derivative);
 }
 
-// Additional math functions with templates
-template<typename T, typename E>
-CosExpr<T, E> cosExpr(E expr)
-{
-    return makeCosExpr<T>(expr);
-}
-
 template<typename T>
 Dual<T> cosDual(Dual<T> d)
 {
     return Dual<T>::Create(cos(d.value), -sin(d.value) * d.derivative);
-}
-
-template<typename T, typename E>
-ExpExpr<T, E> expExpr(E expr)
-{
-    return makeExpExpr<T>(expr);
 }
 
 template<typename T>
@@ -488,22 +422,10 @@ Dual<T> expDual(Dual<T> d)
     return Dual<T>::Create(exp_val, exp_val * d.derivative);
 }
 
-template<typename T, typename E>
-LogExpr<T, E> logExpr(E expr)
-{
-    return makeLogExpr<T>(expr);
-}
-
 template<typename T>
 Dual<T> logDual(Dual<T> d)
 {
     return Dual<T>::Create(log(d.value), d.derivative / d.value);
-}
-
-template<typename T, typename E>
-SqrtExpr<T, E> sqrtExpr(E expr)
-{
-    return makeSqrtExpr<T>(expr);
 }
 
 template<typename T>
@@ -736,7 +658,7 @@ struct DetExpr
 // Vector and Matrix Operation Functions
 // ============================================================================
 
-// Vector operations
+// Vector operations - reduce duplication with generic patterns
 template<typename T, int N, typename L, typename R>
 DotExpr<T, N, L, R> dotProduct(L left, R right)
 {
@@ -746,7 +668,7 @@ DotExpr<T, N, L, R> dotProduct(L left, R right)
     return result;
 }
 
-template<typename T, typename L, typename R>
+template<typename T, typename L, typename R>  
 CrossExpr<T, L, R> crossProduct(L left, R right)
 {
     CrossExpr<T, L, R> result;
@@ -755,23 +677,20 @@ CrossExpr<T, L, R> crossProduct(L left, R right)
     return result;
 }
 
-template<typename T, int N, typename E>
-LengthExpr<T, N, E> lengthExpr(E expr)
-{
-    LengthExpr<T, N, E> result;
-    result.expr = expr;
-    return result;
+// Generic unary vector expression factory
+#define MAKE_VECTOR_UNARY_OP(OpName, ExprType) \
+template<typename T, int N, typename E> \
+ExprType<T, N, E> OpName(E expr) \
+{ \
+    ExprType<T, N, E> result; \
+    result.expr = expr; \
+    return result; \
 }
 
-template<typename T, int N, typename E>
-NormalizeExpr<T, N, E> normalizeExpr(E expr)
-{
-    NormalizeExpr<T, N, E> result;
-    result.expr = expr;
-    return result;
-}
+MAKE_VECTOR_UNARY_OP(lengthExpr, LengthExpr)
+MAKE_VECTOR_UNARY_OP(normalizeExpr, NormalizeExpr)
 
-// Matrix operations
+// Matrix operations 
 template<typename T, int N, int K, int M, typename L, typename R>
 MatMulExpr<T, N, K, M, L, R> matMul(L left, R right)
 {
@@ -781,6 +700,7 @@ MatMulExpr<T, N, K, M, L, R> matMul(L left, R right)
     return result;
 }
 
+// Special cases with different template parameters
 template<typename T, int N, int M, typename E>
 TransposeExpr<T, N, M, E> transposeExpr(E expr)
 {
@@ -808,30 +728,18 @@ Dual<T> getComponent(Dual<vector<T, N> > vec, int index)
     return Dual<T>::Create(vec.value[index], vec.derivative[index]);
 }
 
-// Convenience functions for common components
-template<typename T, int N>
-Dual<T> getX(Dual<vector<T, N> > vec)
-{
-    return getComponent(vec, 0);
+// Convenience functions for common components - reduce duplication with macro
+#define MAKE_COMPONENT_ACCESSOR(ComponentName, Index) \
+template<typename T, int N> \
+Dual<T> get##ComponentName(Dual<vector<T, N> > vec) \
+{ \
+    return getComponent(vec, Index); \
 }
 
-template<typename T, int N>
-Dual<T> getY(Dual<vector<T, N> > vec)
-{
-    return getComponent(vec, 1);
-}
-
-template<typename T, int N>
-Dual<T> getZ(Dual<vector<T, N> > vec)
-{
-    return getComponent(vec, 2);
-}
-
-template<typename T, int N>
-Dual<T> getW(Dual<vector<T, N> > vec)
-{
-    return getComponent(vec, 3);
-}
+MAKE_COMPONENT_ACCESSOR(X, 0)
+MAKE_COMPONENT_ACCESSOR(Y, 1)
+MAKE_COMPONENT_ACCESSOR(Z, 2)
+MAKE_COMPONENT_ACCESSOR(W, 3)
 
 // Specific vector construction functions
 template<typename T>
