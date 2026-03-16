@@ -4,8 +4,6 @@
 // Test Suite for Backward Automatic Differentiation
 // ============================================================================
 
-#define AUTO_VAR(var, expr) __decltype(expr) var = expr;
-
 // Structure to store individual test results
 struct BackADTestResult
 {

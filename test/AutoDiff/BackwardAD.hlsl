@@ -2,6 +2,10 @@
 #define BACKWARD_AD_HLSL
 
 #include "type_traits.h"
+
+// This is a supplement for not having `auto`, which would be _really_ nice...
+#define AUTO_VAR(var,...) __decltype(__VA_ARGS__) var = __VA_ARGS__
+
 // ============================================================================
 // Backward Automatic Differentiation for HLSL - Templated Version
 // ============================================================================
@@ -51,6 +55,7 @@ struct GradientContext
 template<typename T>
 struct Variable
 {
+  using ValueType = T;
     T value;
     int id;
 

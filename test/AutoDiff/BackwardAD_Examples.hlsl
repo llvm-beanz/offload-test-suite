@@ -4,8 +4,6 @@
 // Backward Automatic Differentiation Examples
 // ============================================================================
 
-#define AUTO_VAR(var, expr) __decltype(expr) var = expr;
-
 // Example 1: Simple function f(x) = x^2, f'(x) = 2x
 void ExampleSimpleQuadratic()
 {
