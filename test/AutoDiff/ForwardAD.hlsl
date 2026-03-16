@@ -1,99 +1,101 @@
 #ifndef FORWARD_AD_HLSL
 #define FORWARD_AD_HLSL
 
+namespace ad {
+namespace fwd {
 // Forward Automatic Differentiation for HLSL
-// This header provides dual numbers for automatic differentiation with templated types
+// This header provides Value numbers for automatic differentiation with templated types
 
 // ============================================================================
 // Forward declarations 
 // ============================================================================
 
-// Template dual structure for different numeric types
+// Template Value structure for different numeric types
 template<typename T>
-struct Dual;
+struct Value;
 
 // ============================================================================
-// Dual Number Structure - templated for different types
+// Value Number Structure - templated for different types
 // ============================================================================
 
 template<typename T>
-struct Dual
+struct Value
 {
     T value;
     T derivative;
     
     // Static creation functions
-    static Dual<T> Create(T v, T d)
+    static Value<T> Create(T v, T d)
     {
-        Dual<T> result;
+        Value<T> result;
         result.value = v;
         result.derivative = d;
         return result;
     }
     
-    static Dual<T> CreateValue(T v)
+    static Value<T> CreateValue(T v)
     {
-        Dual<T> result;
+        Value<T> result;
         result.value = v;
         result.derivative = (T)0;
         return result;
     }
     
-    static Dual<T> CreateZero()
+    static Value<T> CreateZero()
     {
-        Dual<T> result;
+        Value<T> result;
         result.value = (T)0;
         result.derivative = (T)0;
         return result;
     }
     
     // Member operators
-    Dual<T> operator+(Dual<T> other)
+    Value<T> operator+(Value<T> other)
     {
-        return Dual<T>::Create(value + other.value, derivative + other.derivative);
+        return Value<T>::Create(value + other.value, derivative + other.derivative);
     }
     
-    Dual<T> operator+(T other)
+    Value<T> operator+(T other)
     {
-        return Dual<T>::Create(value + other, derivative);
+        return Value<T>::Create(value + other, derivative);
     }
     
-    Dual<T> operator-(Dual<T> other)
+    Value<T> operator-(Value<T> other)
     {
-        return Dual<T>::Create(value - other.value, derivative - other.derivative);
+        return Value<T>::Create(value - other.value, derivative - other.derivative);
     }
     
-    Dual<T> operator-(T other)
+    Value<T> operator-(T other)
     {
-        return Dual<T>::Create(value - other, derivative);
+        return Value<T>::Create(value - other, derivative);
     }
     
-    Dual<T> operator*(Dual<T> other)
+    Value<T> operator*(Value<T> other)
     {
-        return Dual<T>::Create(value * other.value, 
+        return Value<T>::Create(value * other.value, 
                        derivative * other.value + value * other.derivative);
     }
     
-    Dual<T> operator*(T other)
+    Value<T> operator*(T other)
     {
-        return Dual<T>::Create(value * other, derivative * other);
+        return Value<T>::Create(value * other, derivative * other);
     }
     
-    Dual<T> operator/(Dual<T> other)
+    Value<T> operator/(Value<T> other)
     {
         T denom = other.value * other.value;
-        return Dual<T>::Create(value / other.value,
+        return Value<T>::Create(value / other.value,
                        (derivative * other.value - value * other.derivative) / denom);
     }
     
-    Dual<T> operator/(T other)
+    Value<T> operator/(T other)
     {
-        return Dual<T>::Create(value / other, derivative / other);
+        return Value<T>::Create(value / other, derivative / other);
     }
     
-    Dual<T> operator-()
+    Value<T> operator-()
     {
-        return Dual<T>::Create(-value, -derivative);
+        return Value<T>::Create(-value, -derivative);
     }
 };
 
@@ -111,15 +113,15 @@ struct Dual
 template<typename T, typename L, typename R>
 struct AddExpr
 {
-    using ResultType = Dual<T>;
+    using ResultType = Value<T>;
     L left;
     R right;
     
-    Dual<T> eval()
+    Value<T> eval()
     {
-        Dual<T> l_val = getValue(left);
-        Dual<T> r_val = getValue(right);
-        return Dual<T>::Create(l_val.value + r_val.value, 
+        Value<T> l_val = getValue(left);
+        Value<T> r_val = getValue(right);
+        return Value<T>::Create(l_val.value + r_val.value, 
                    l_val.derivative + r_val.derivative);
     }
 };
@@ -128,15 +130,15 @@ struct AddExpr
 template<typename T, typename L, typename R>
 struct SubExpr
 {
-    using ResultType = Dual<T>;
+    using ResultType = Value<T>;
     L left;
     R right;
     
-    Dual<T> eval()
+    Value<T> eval()
     {
-        Dual<T> l_val = getValue(left);
-        Dual<T> r_val = getValue(right);
-        return Dual<T>::Create(l_val.value - r_val.value, 
+        Value<T> l_val = getValue(left);
+        Value<T> r_val = getValue(right);
+        return Value<T>::Create(l_val.value - r_val.value, 
                    l_val.derivative - r_val.derivative);
     }
 };
@@ -145,16 +147,16 @@ struct SubExpr
 template<typename T, typename L, typename R>
 struct MulExpr
 {
-    using ResultType = Dual<T>;
+    using ResultType = Value<T>;
     L left;
     R right;
     
-    Dual<T> eval()
+    Value<T> eval()
     {
-        Dual<T> l_val = getValue(left);
-        Dual<T> r_val = getValue(right);
+        Value<T> l_val = getValue(left);
+        Value<T> r_val = getValue(right);
         // Product rule: (f*g)' = f'*g + f*g'
-        return Dual<T>::Create(l_val.value * r_val.value,
+        return Value<T>::Create(l_val.value * r_val.value,
                    l_val.derivative * r_val.value + l_val.value * r_val.derivative);
     }
 };
@@ -163,17 +165,17 @@ struct MulExpr
 template<typename T, typename L, typename R>
 struct DivExpr
 {
-    using ResultType = Dual<T>;
+    using ResultType = Value<T>;
     L left;
     R right;
     
-    Dual<T> eval()
+    Value<T> eval()
     {
-        Dual<T> l_val = getValue(left);
-        Dual<T> r_val = getValue(right);
+        Value<T> l_val = getValue(left);
+        Value<T> r_val = getValue(right);
         // Quotient rule: (f/g)' = (f'*g - f*g') / g^2
         T denom = r_val.value * r_val.value;
-        return Dual<T>::Create(l_val.value / r_val.value,
+        return Value<T>::Create(l_val.value / r_val.value,
                    (l_val.derivative * r_val.value - l_val.value * r_val.derivative) / denom);
     }
 };
@@ -182,19 +184,19 @@ struct DivExpr
 template<typename T, typename L, typename R>
 struct PowExpr
 {
-    using ResultType = Dual<T>;
+    using ResultType = Value<T>;
     L base;
     R exponent;
     
-    Dual<T> eval()
+    Value<T> eval()
     {
-        Dual<T> b_val = getValue(base);
-        Dual<T> e_val = getValue(exponent);
+        Value<T> b_val = getValue(base);
+        Value<T> e_val = getValue(exponent);
         // Power rule: (f^g)' = f^g * (g' * ln(f) + g * f'/f)
         T pow_val = pow(b_val.value, e_val.value);
         T deriv = pow_val * (e_val.derivative * log(b_val.value) + 
                             e_val.value * b_val.derivative / b_val.value);
-        return Dual<T>::Create(pow_val, deriv);
+        return Value<T>::Create(pow_val, deriv);
     }
 };
 
@@ -206,13 +208,13 @@ struct PowExpr
 template<typename T, typename E>
 struct NegExpr
 {
-    using ResultType = Dual<T>;
+    using ResultType = Value<T>;
     E expr;
     
-    Dual<T> eval()
+    Value<T> eval()
     {
-        Dual<T> val = getValue(expr);
-        return Dual<T>::Create(-val.value, -val.derivative);
+        Value<T> val = getValue(expr);
+        return Value<T>::Create(-val.value, -val.derivative);
     }
 };
 
@@ -220,14 +222,14 @@ struct NegExpr
 template<typename T, typename E>
 struct SinExpr
 {
-    using ResultType = Dual<T>;
+    using ResultType = Value<T>;
     E expr;
     
-    Dual<T> eval()
+    Value<T> eval()
     {
-        Dual<T> val = getValue(expr);
+        Value<T> val = getValue(expr);
         // d/dx[sin(x)] = cos(x) * x'
-        return Dual<T>::Create(sin(val.value), cos(val.value) * val.derivative);
+        return Value<T>::Create(sin(val.value), cos(val.value) * val.derivative);
     }
 };
 
@@ -235,14 +237,14 @@ struct SinExpr
 template<typename T, typename E>
 struct CosExpr
 {
-    using ResultType = Dual<T>;
+    using ResultType = Value<T>;
     E expr;
     
-    Dual<T> eval()
+    Value<T> eval()
     {
-        Dual<T> val = getValue(expr);
+        Value<T> val = getValue(expr);
         // d/dx[cos(x)] = -sin(x) * x'
-        return Dual<T>::Create(cos(val.value), -sin(val.value) * val.derivative);
+        return Value<T>::Create(cos(val.value), -sin(val.value) * val.derivative);
     }
 };
 
@@ -250,15 +252,15 @@ struct CosExpr
 template<typename T, typename E>
 struct ExpExpr
 {
-    using ResultType = Dual<T>;
+    using ResultType = Value<T>;
     E expr;
     
-    Dual<T> eval()
+    Value<T> eval()
     {
-        Dual<T> val = getValue(expr);
+        Value<T> val = getValue(expr);
         // d/dx[exp(x)] = exp(x) * x'
         T exp_val = exp(val.value);
-        return Dual<T>::Create(exp_val, exp_val * val.derivative);
+        return Value<T>::Create(exp_val, exp_val * val.derivative);
     }
 };
 
@@ -266,14 +268,14 @@ struct ExpExpr
 template<typename T, typename E>
 struct LogExpr
 {
-    using ResultType = Dual<T>;
+    using ResultType = Value<T>;
     E expr;
     
-    Dual<T> eval()
+    Value<T> eval()
     {
-        Dual<T> val = getValue(expr);
+        Value<T> val = getValue(expr);
         // d/dx[log(x)] = x' / x
-        return Dual<T>::Create(log(val.value), val.derivative / val.value);
+        return Value<T>::Create(log(val.value), val.derivative / val.value);
     }
 };
 
@@ -281,15 +283,15 @@ struct LogExpr
 template<typename T, typename E>
 struct SqrtExpr
 {
-    using ResultType = Dual<T>;
+    using ResultType = Value<T>;
     E expr;
     
-    Dual<T> eval()
+    Value<T> eval()
     {
-        Dual<T> val = getValue(expr);
+        Value<T> val = getValue(expr);
         // d/dx[sqrt(x)] = x' / (2 * sqrt(x))
         T sqrt_val = sqrt(val.value);
-        return Dual<T>::Create(sqrt_val, val.derivative / ((T)2 * sqrt_val));
+        return Value<T>::Create(sqrt_val, val.derivative / ((T)2 * sqrt_val));
     }
 };
 
@@ -297,7 +299,7 @@ struct SqrtExpr
 // Helper Functions for Value Extraction
 // ============================================================================
 
-// Extract Dual from templated expression types
+// Extract Value from templated expression types
 template <typename T>
 typename T::ResultType getValue(T value)
 {
@@ -305,9 +307,9 @@ typename T::ResultType getValue(T value)
 }
 
 
-// Extract Dual from Dual (identity)
+// Extract Value from Value (identity)
 template<typename T>
-Dual<T> getValue(Dual<T> d)
+Value<T> getValue(Value<T> d)
 {
     return d;
 }
@@ -402,85 +404,52 @@ MAKE_MATH_EXPR_OP(exp, ExpExpr)
 MAKE_MATH_EXPR_OP(log, LogExpr)
 MAKE_MATH_EXPR_OP(sqrt, SqrtExpr)
 
-// Direct dual functions for immediate evaluation
-template<typename T>
-Dual<T> sinDual(Dual<T> d)
-{
-    return Dual<T>::Create(sin(d.value), cos(d.value) * d.derivative);
-}
-
-template<typename T>
-Dual<T> cosDual(Dual<T> d)
-{
-    return Dual<T>::Create(cos(d.value), -sin(d.value) * d.derivative);
-}
-
-template<typename T>
-Dual<T> expDual(Dual<T> d)
-{
-    T exp_val = exp(d.value);
-    return Dual<T>::Create(exp_val, exp_val * d.derivative);
-}
-
-template<typename T>
-Dual<T> logDual(Dual<T> d)
-{
-    return Dual<T>::Create(log(d.value), d.derivative / d.value);
-}
-
-template<typename T>
-Dual<T> sqrtDual(Dual<T> d)
-{
-    T sqrt_val = sqrt(d.value);
-    return Dual<T>::Create(sqrt_val, d.derivative / ((T)2 * sqrt_val));
-}
-
 // ============================================================================
 // Utility Functions
 // ============================================================================
 
 template<typename T>
-Dual<T> variable(T value)
+Value<T> variable(T value)
 {
-    return Dual<T>::Create(value, (T)1);
+    return Value<T>::Create(value, (T)1);
 }
 
 // Scalar constant function  
 template<typename T>
-Dual<T> constant(T value)
+Value<T> constant(T value)
 {
-    return Dual<T>::Create(value, (T)0);
+    return Value<T>::Create(value, (T)0);
 }
 
 // ============================================================================
-// Matrix and Vector Dual Number Support  
+// Matrix and Vector Value Number Support  
 // ============================================================================
 
-// Vector dual initialization functions using splat casting
+// Vector Value initialization functions using splat casting
 template<typename T, int N>
-Dual<vector<T, N> > variable(vector<T, N> value)
+Value<vector<T, N> > variable(vector<T, N> value)
 {
-    return Dual<vector<T, N> >::Create(value, (vector<T, N>)1); // Splat 1 to all components
+    return Value<vector<T, N> >::Create(value, (vector<T, N>)1); // Splat 1 to all components
 }
 
-// Matrix dual initialization functions using splat casting
+// Matrix Value initialization functions using splat casting
 template<typename T, int N, int M>
-Dual<matrix<T, N, M> > variable(matrix<T, N, M> value)
+Value<matrix<T, N, M> > variable(matrix<T, N, M> value)
 {
-    return Dual<matrix<T, N, M> >::Create(value, (matrix<T, N, M>)1); // Splat 1 to all components
+    return Value<matrix<T, N, M> >::Create(value, (matrix<T, N, M>)1); // Splat 1 to all components
 }
 
 // Specialized constant functions for vector and matrix types
 template<typename T, int N>
-Dual<vector<T, N> > constantVector(vector<T, N> value)
+Value<vector<T, N> > constantVector(vector<T, N> value)
 {
-    return Dual<vector<T, N> >::Create(value, (vector<T, N>)0); // Splat 0 to all components
+    return Value<vector<T, N> >::Create(value, (vector<T, N>)0); // Splat 0 to all components
 }
 
 template<typename T, int N, int M>
-Dual<matrix<T, N, M> > constantMatrix(matrix<T, N, M> value)
+Value<matrix<T, N, M> > constantMatrix(matrix<T, N, M> value)
 {
-    return Dual<matrix<T, N, M> >::Create(value, (matrix<T, N, M>)0); // Splat 0 to all components
+    return Value<matrix<T, N, M> >::Create(value, (matrix<T, N, M>)0); // Splat 0 to all components
 }
 
 // ============================================================================
@@ -491,20 +460,20 @@ Dual<matrix<T, N, M> > constantMatrix(matrix<T, N, M> value)
 template<typename T, int N, typename L, typename R>
 struct DotExpr
 {
-    using ResultType = Dual<T>;
+    using ResultType = Value<T>;
     L left;
     R right;
     
-    Dual<T> eval()
+    Value<T> eval()
     {
-        Dual<vector<T, N> > l_val = getValue(left);
-        Dual<vector<T, N> > r_val = getValue(right);
+        Value<vector<T, N> > l_val = getValue(left);
+        Value<vector<T, N> > r_val = getValue(right);
         
         // Dot product: d/dx[dot(u,v)] = dot(u',v) + dot(u,v')
         T val = dot(l_val.value, r_val.value);
         T deriv = dot(l_val.derivative, r_val.value) + dot(l_val.value, r_val.derivative);
         
-        return Dual<T>::Create(val, deriv);
+        return Value<T>::Create(val, deriv);
     }
 };
 
@@ -512,20 +481,20 @@ struct DotExpr
 template<typename T, typename L, typename R>
 struct CrossExpr
 {
-    using ResultType = Dual<vector<T, 3> >;
+    using ResultType = Value<vector<T, 3> >;
     L left;
     R right;
     
-    Dual<vector<T, 3> > eval()
+    Value<vector<T, 3> > eval()
     {
-        Dual<vector<T, 3> > l_val = getValue(left);
-        Dual<vector<T, 3> > r_val = getValue(right);
+        Value<vector<T, 3> > l_val = getValue(left);
+        Value<vector<T, 3> > r_val = getValue(right);
         
         // Cross product: d/dx[cross(u,v)] = cross(u',v) + cross(u,v')
         vector<T, 3> val = cross(l_val.value, r_val.value);
         vector<T, 3> deriv = cross(l_val.derivative, r_val.value) + cross(l_val.value, r_val.derivative);
         
-        return Dual<vector<T, 3> >::Create(val, deriv);
+        return Value<vector<T, 3> >::Create(val, deriv);
     }
 };
 
@@ -533,18 +502,18 @@ struct CrossExpr
 template<typename T, int N, typename E>
 struct LengthExpr
 {
-    using ResultType = Dual<T>;
+    using ResultType = Value<T>;
     E expr;
     
-    Dual<T> eval()
+    Value<T> eval()
     {
-        Dual<vector<T, N> > val = getValue(expr);
+        Value<vector<T, N> > val = getValue(expr);
         
         // Length: d/dx[|v|] = dot(v, v') / |v|
         T len = length(val.value);
         T deriv = dot(val.value, val.derivative) / len;
         
-        return Dual<T>::Create(len, deriv);
+        return Value<T>::Create(len, deriv);
     }
 };
 
@@ -552,12 +521,12 @@ struct LengthExpr
 template<typename T, int N, typename E>
 struct NormalizeExpr
 {
-    using ResultType = Dual<vector<T, N> >;
+    using ResultType = Value<vector<T, N> >;
     E expr;
     
-    Dual<vector<T, N> > eval()
+    Value<vector<T, N> > eval()
     {
-        Dual<vector<T, N> > val = getValue(expr);
+        Value<vector<T, N> > val = getValue(expr);
         
         // Normalize: d/dx[normalize(v)] = (v' * |v| - v * (dot(v,v') / |v|)) / |v|²
         T len = length(val.value);
@@ -565,7 +534,7 @@ struct NormalizeExpr
         T dot_deriv = dot(val.value, val.derivative);
         vector<T, N> deriv = (val.derivative * len - val.value * (dot_deriv / len)) / (len * len);
         
-        return Dual<vector<T, N> >::Create(norm_val, deriv);
+        return Value<vector<T, N> >::Create(norm_val, deriv);
     }
 };
 
@@ -577,22 +546,22 @@ struct NormalizeExpr
 template<typename T, int N, int K, int M, typename L, typename R>
 struct MatMulExpr
 {
-    using ResultType = Dual<vector<T, N> >;
+    using ResultType = Value<vector<T, N> >;
     L left;   // Matrix NxK
     R right;  // Matrix KxM or Vector K
     
-    // Returns either Dual<matrix<T,N,M> > for matrix*matrix or Dual<vector<T,N> > for matrix*vector
+    // Returns either Value<matrix<T,N,M> > for matrix*matrix or Value<vector<T,N> > for matrix*vector
     // We'll use a specific implementation that works with common cases
-    Dual<vector<T, N> > eval()  // Assuming matrix-vector multiplication for now
+    Value<vector<T, N> > eval()  // Assuming matrix-vector multiplication for now
     {
-        Dual<matrix<T, N, K> > l_val = getValue(left);
-        Dual<vector<T, K> > r_val = getValue(right);
+        Value<matrix<T, N, K> > l_val = getValue(left);
+        Value<vector<T, K> > r_val = getValue(right);
         
         // Matrix-vector multiplication: d/dx[A*v] = A'*v + A*v'
         vector<T, N> val = mul(l_val.value, r_val.value);
         vector<T, N> deriv = mul(l_val.derivative, r_val.value) + mul(l_val.value, r_val.derivative);
         
-        return Dual<vector<T, N> >::Create(val, deriv);
+        return Value<vector<T, N> >::Create(val, deriv);
     }
 };
 
@@ -600,18 +569,18 @@ struct MatMulExpr
 template<typename T, int N, int M, typename E>
 struct TransposeExpr
 {
-    using ResultType = Dual<matrix<T, M, N> >;
+    using ResultType = Value<matrix<T, M, N> >;
     E expr;
     
-    Dual<matrix<T, M, N> > eval()  // Transpose flips dimensions
+    Value<matrix<T, M, N> > eval()  // Transpose flips dimensions
     {
-        Dual<matrix<T, N, M> > val = getValue(expr);
+        Value<matrix<T, N, M> > val = getValue(expr);
         
         // Transpose: d/dx[transpose(M)] = transpose(M')
         matrix<T, M, N> val_t = transpose(val.value);
         matrix<T, M, N> deriv_t = transpose(val.derivative);
         
-        return Dual<matrix<T, M, N> >::Create(val_t, deriv_t);
+        return Value<matrix<T, M, N> >::Create(val_t, deriv_t);
     }
 };
 
@@ -619,12 +588,12 @@ struct TransposeExpr
 template<typename T, int N, typename E>
 struct DetExpr
 {
-    using ResultType = Dual<T>;
+    using ResultType = Value<T>;
     E expr;
     
-    Dual<T> eval()
+    Value<T> eval()
     {
-        Dual<matrix<T, N, N> > val = getValue(expr);
+        Value<matrix<T, N, N> > val = getValue(expr);
         
         // Determinant: d/dx[det(M)] = det(M) * tr(M^-1 * M')
         // For simplicity, we'll use the fact that d/dx[det(M)] = det(M) * tr(adj(M)^T * M') / det(M) = tr(adj(M)^T * M')
@@ -645,7 +614,7 @@ struct DetExpr
             deriv = (T)0;
         }
         
-        return Dual<T>::Create(det_val, deriv);
+        return Value<T>::Create(det_val, deriv);
     }
 };
 
@@ -721,17 +690,17 @@ DetExpr<T, N, E> determinantExpr(E expr)
 // Component-wise Vector Operations
 // ============================================================================
 
-// Component access for vectors (returns scalar dual) 
+// Component access for vectors (returns scalar Value) 
 template<typename T, int N>
-Dual<T> getComponent(Dual<vector<T, N> > vec, int index)
+Value<T> getComponent(Value<vector<T, N> > vec, int index)
 {
-    return Dual<T>::Create(vec.value[index], vec.derivative[index]);
+    return Value<T>::Create(vec.value[index], vec.derivative[index]);
 }
 
 // Convenience functions for common components - reduce duplication with macro
 #define MAKE_COMPONENT_ACCESSOR(ComponentName, Index) \
 template<typename T, int N> \
-Dual<T> get##ComponentName(Dual<vector<T, N> > vec) \
+Value<T> get##ComponentName(Value<vector<T, N> > vec) \
 { \
     return getComponent(vec, Index); \
 }
@@ -743,24 +712,26 @@ MAKE_COMPONENT_ACCESSOR(W, 3)
 
 // Specific vector construction functions
 template<typename T>
-Dual<vector<T, 2> > makeVector(Dual<T> x, Dual<T> y)
+Value<vector<T, 2> > makeVector(Value<T> x, Value<T> y)
 {
-    return Dual<vector<T, 2> >::Create(vector<T, 2>(x.value, y.value), 
+    return Value<vector<T, 2> >::Create(vector<T, 2>(x.value, y.value), 
                                  vector<T, 2>(x.derivative, y.derivative));
 }
 
 template<typename T>
-Dual<vector<T, 3> > makeVector(Dual<T> x, Dual<T> y, Dual<T> z)
+Value<vector<T, 3> > makeVector(Value<T> x, Value<T> y, Value<T> z)
 {
-    return Dual<vector<T, 3> >::Create(vector<T, 3>(x.value, y.value, z.value), 
+    return Value<vector<T, 3> >::Create(vector<T, 3>(x.value, y.value, z.value), 
                                  vector<T, 3>(x.derivative, y.derivative, z.derivative));
 }
 
 template<typename T>
-Dual<vector<T, 4> > makeVector(Dual<T> x, Dual<T> y, Dual<T> z, Dual<T> w)
+Value<vector<T, 4> > makeVector(Value<T> x, Value<T> y, Value<T> z, Value<T> w)
 {
-    return Dual<vector<T, 4> >::Create(vector<T, 4>(x.value, y.value, z.value, w.value), 
+    return Value<vector<T, 4> >::Create(vector<T, 4>(x.value, y.value, z.value, w.value), 
                                  vector<T, 4>(x.derivative, y.derivative, z.derivative, w.derivative));
 }
 
+} // namespace fwd
+} // namespace ad
 #endif // FORWARD_AD_HLSL

@@ -399,5 +399,6 @@ Results:
 
 ...
 
+# RUN: %dxc_target -T lib_6_6 %S/ForwardAD_Examples.hlsl
 # RUN: %dxc_target -T cs_6_6 -E RunAllTests -Fo %t.o %S/ForwardAD_Tests.hlsl
 # RUN: %offloader %s %t.o

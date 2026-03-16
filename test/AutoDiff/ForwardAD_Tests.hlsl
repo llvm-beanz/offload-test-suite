@@ -1,5 +1,7 @@
 #include "ForwardAD.hlsl"
 
+using namespace ad::fwd;
+
 // Test suite for Forward Automatic Differentiation
 // Each test function returns its computed result for CPU verification
 
@@ -50,85 +52,85 @@ StructuredBuffer<ADTestInputs> InputBuffer : register(t0);
 RWStructuredBuffer<ADTestResult> ResultBuffer : register(u0);
 
 // Test basic arithmetic operations: f(x) = 2x + 3, f'(x) = 2
-Dual<float> TestBasicArithmetic(float input_x)
+Value<float> TestBasicArithmetic(float input_x)
 {
-    Dual<float> x = variable<float>(input_x);
-    Dual<float> f = getValue(add<float>(getValue(multiply<float>(Dual<float>::Create(2.0f, 0.0f), x)), Dual<float>::Create(3.0f, 0.0f)));
+    Value<float> x = variable<float>(input_x);
+    Value<float> f = getValue(add<float>(getValue(multiply<float>(Value<float>::Create(2.0f, 0.0f), x)), Value<float>::Create(3.0f, 0.0f)));
     return f;
 }
 
 // Test quadratic function: f(x) = x^2, f'(x) = 2x
-Dual<float> TestQuadratic(float input_x)
+Value<float> TestQuadratic(float input_x)
 {
-    Dual<float> x = variable<float>(input_x);
-    Dual<float> f = getValue(multiply<float>(x, x));
+    Value<float> x = variable<float>(input_x);
+    Value<float> f = getValue(multiply<float>(x, x));
     return f;
 }
 
 // Test trigonometric functions: f(x) = sin(x), f'(x) = cos(x)
-Dual<float> TestTrigonometric(float input_x)
+Value<float> TestTrigonometric(float input_x)
 {
-    Dual<float> x = variable<float>(input_x);
-    Dual<float> f = getValue(sinExpr<float>(x));
+    Value<float> x = variable<float>(input_x);
+    Value<float> f = getValue(sinExpr<float>(x));
     return f;
 }
 
 // Test exponential function: f(x) = exp(x), f'(x) = exp(x)
-Dual<float> TestExponential(float input_x)
+Value<float> TestExponential(float input_x)
 {
-    Dual<float> x = variable<float>(input_x);
-    Dual<float> f = getValue(expExpr<float>(x));
+    Value<float> x = variable<float>(input_x);
+    Value<float> f = getValue(expExpr<float>(x));
     return f;
 }
 
 // Test logarithm function: f(x) = log(x), f'(x) = 1/x
-Dual<float> TestLogarithm(float input_x)
+Value<float> TestLogarithm(float input_x)
 {
-    Dual<float> x = variable<float>(input_x);
-    Dual<float> f = getValue(logExpr<float>(x));
+    Value<float> x = variable<float>(input_x);
+    Value<float> f = getValue(logExpr<float>(x));
     return f;
 }
 
 // Test chain rule with composite function: f(x) = sin(2x), f'(x) = 2*cos(2x)
-Dual<float> TestChainRule(float input_x)
+Value<float> TestChainRule(float input_x)
 {
-    Dual<float> x = variable<float>(input_x);
-    Dual<float> f = getValue(sinExpr<float>(getValue(multiply<float>(Dual<float>::Create(2.0f, 0.0f), x))));
+    Value<float> x = variable<float>(input_x);
+    Value<float> f = getValue(sinExpr<float>(getValue(multiply<float>(Value<float>::Create(2.0f, 0.0f), x))));
     return f;
 }
 
 // Test product rule: f(x) = x * sin(x), f'(x) = sin(x) + x*cos(x)
-Dual<float> TestProductRule(float input_x)
+Value<float> TestProductRule(float input_x)
 {
-    Dual<float> x = variable<float>(input_x);
-    Dual<float> f = getValue(multiply<float>(x, getValue(sinExpr<float>(x))));
+    Value<float> x = variable<float>(input_x);
+    Value<float> f = getValue(multiply<float>(x, getValue(sinExpr<float>(x))));
     return f;
 }
 
 // Test quotient rule: f(x) = x / (x + 1), f'(x) = 1 / (x + 1)^2
-Dual<float> TestQuotientRule(float input_x)
+Value<float> TestQuotientRule(float input_x)
 {
-    Dual<float> x = variable<float>(input_x);
-    Dual<float> f = getValue(divide<float>(x, getValue(add<float>(x, Dual<float>::Create(1.0f, 0.0f)))));
+    Value<float> x = variable<float>(input_x);
+    Value<float> f = getValue(divide<float>(x, getValue(add<float>(x, Value<float>::Create(1.0f, 0.0f)))));
     return f;
 }
 
 // Test power rule: f(x) = x^exponent, f'(x) = exponent*x^(exponent-1)
-Dual<float> TestPowerRule(float input_x, float exponent)
+Value<float> TestPowerRule(float input_x, float exponent)
 {
-    Dual<float> x = variable<float>(input_x);
-    Dual<float> f = getValue(power<float>(x, constant<float>(exponent)));
+    Value<float> x = variable<float>(input_x);
+    Value<float> f = getValue(power<float>(x, constant<float>(exponent)));
     return f;
 }
 
 // Test complex expression: f(x) = exp(x) * sin(x) + x^2
 // f'(x) = exp(x)*sin(x) + exp(x)*cos(x) + 2x
-Dual<float> TestComplexExpression(float input_x)
+Value<float> TestComplexExpression(float input_x)
 {
-    Dual<float> x = variable<float>(input_x);
-    Dual<float> exp_sin = getValue(multiply<float>(getValue(expExpr<float>(x)), getValue(sinExpr<float>(x))));
-    Dual<float> x_squared = getValue(multiply<float>(x, x));
-    Dual<float> f = getValue(add<float>(exp_sin, x_squared));
+    Value<float> x = variable<float>(input_x);
+    Value<float> exp_sin = getValue(multiply<float>(getValue(expExpr<float>(x)), getValue(sinExpr<float>(x))));
+    Value<float> x_squared = getValue(multiply<float>(x, x));
+    Value<float> f = getValue(add<float>(exp_sin, x_squared));
     return f;
 }
 
@@ -138,64 +140,64 @@ Dual<float> TestComplexExpression(float input_x)
 
 // Test vector dot product differentiation
 // f(x) = dot(v, u) where v = [x, scalar*x] and u is constant
-Dual<float> TestVectorDotProduct(float input_x, float scalar, vector<float, 2> u)
+Value<float> TestVectorDotProduct(float input_x, float scalar, vector<float, 2> u)
 {
-    Dual<float> x = variable<float>(input_x);
-    Dual<vector<float, 2> > v = makeVector<float>(x, getValue(multiply<float>(Dual<float>::Create(scalar, 0.0f), x)));
-    Dual<vector<float, 2> > u_dual = constantVector<float, 2>(u);
-    Dual<float> f = getValue(dotProduct<float, 2>(v, u_dual));
+    Value<float> x = variable<float>(input_x);
+    Value<vector<float, 2> > v = makeVector<float>(x, getValue(multiply<float>(Value<float>::Create(scalar, 0.0f), x)));
+    Value<vector<float, 2> > u_val = constantVector<float, 2>(u);
+    Value<float> f = getValue(dotProduct<float, 2>(v, u_val));
     return f;
 }
 
 // Test vector length differentiation
 // f(x) = |v| where v = [x, constant]
-Dual<float> TestVectorLength(float input_x, float constant_component)
+Value<float> TestVectorLength(float input_x, float constant_component)
 {
-    Dual<float> x = variable<float>(input_x);
-    Dual<vector<float, 2> > v = makeVector<float>(x, constant<float>(constant_component));
-    Dual<float> f = getValue(lengthExpr<float, 2>(v));
+    Value<float> x = variable<float>(input_x);
+    Value<vector<float, 2> > v = makeVector<float>(x, constant<float>(constant_component));
+    Value<float> f = getValue(lengthExpr<float, 2>(v));
     return f;
 }
 
 // Test vector normalization differentiation
 // f(x) = normalize([x, x]) - testing that it compiles and produces reasonable results
-Dual<vector<float, 2> > TestVectorNormalize(float input_x)
+Value<vector<float, 2> > TestVectorNormalize(float input_x)
 {
-    Dual<float> x = variable<float>(input_x);
-    Dual<vector<float, 2> > v = makeVector<float>(x, x);
-    Dual<vector<float, 2> > f = getValue(normalizeExpr<float, 2>(v));
+    Value<float> x = variable<float>(input_x);
+    Value<vector<float, 2> > v = makeVector<float>(x, x);
+    Value<vector<float, 2> > f = getValue(normalizeExpr<float, 2>(v));
     return f;
 }
 
 // Test matrix multiplication differentiation
 // f(x) = A * v where A = [[x, 0], [0, 1]] and v is constant
-Dual<vector<float, 2> > TestMatrixMultiplication(float input_x, vector<float, 2> v_const)
+Value<vector<float, 2> > TestMatrixMultiplication(float input_x, vector<float, 2> v_const)
 {
-    Dual<float> x = variable<float>(input_x);
+    Value<float> x = variable<float>(input_x);
     
     // Create matrix [[x, 0], [0, 1]]
     matrix<float, 2, 2> mat_val = matrix<float, 2, 2>(x.value, 0, 0, 1);
     matrix<float, 2, 2> mat_deriv = matrix<float, 2, 2>(x.derivative, 0, 0, 0);
-    Dual<matrix<float, 2, 2> > A = Dual<matrix<float, 2, 2> >::Create(mat_val, mat_deriv);
+    Value<matrix<float, 2, 2> > A = Value<matrix<float, 2, 2> >::Create(mat_val, mat_deriv);
     
-    Dual<vector<float, 2> > v = constantVector<float, 2>(v_const);
-    Dual<vector<float, 2> > f = getValue(matMul<float, 2, 2, 2>(A, v));
+    Value<vector<float, 2> > v = constantVector<float, 2>(v_const);
+    Value<vector<float, 2> > f = getValue(matMul<float, 2, 2, 2>(A, v));
     return f;
 }
 
 // Test matrix determinant differentiation  
 // f(x) = det([[x, a], [b, c]]) = x*c - a*b
 // f'(x) = c
-Dual<float> TestMatrixDeterminant(float input_x, float a, float b, float c)
+Value<float> TestMatrixDeterminant(float input_x, float a, float b, float c)
 {
-    Dual<float> x = variable<float>(input_x);
+    Value<float> x = variable<float>(input_x);
     
     // Create matrix [[x, a], [b, c]]
     matrix<float, 2, 2> mat_val = matrix<float, 2, 2>(x.value, a, b, c);
     matrix<float, 2, 2> mat_deriv = matrix<float, 2, 2>(x.derivative, 0, 0, 0);
-    Dual<matrix<float, 2, 2> > A = Dual<matrix<float, 2, 2> >::Create(mat_val, mat_deriv);
+    Value<matrix<float, 2, 2> > A = Value<matrix<float, 2, 2> >::Create(mat_val, mat_deriv);
     
-    Dual<float> f = getValue(determinantExpr<float, 2>(A));
+    Value<float> f = getValue(determinantExpr<float, 2>(A));
     return f;
 }
 
@@ -213,105 +215,105 @@ void RunAllTests(uint3 DispatchThreadID : SV_DispatchThreadID)
     
     // Test 0: Basic Arithmetic - f(x) = 2x + 3
     {
-        Dual<float> result = TestBasicArithmetic(inputs.basic_arithmetic_x);
+        Value<float> result = TestBasicArithmetic(inputs.basic_arithmetic_x);
         results[0].value = result.value;
         results[0].derivative = result.derivative;
     }
     
     // Test 1: Quadratic - f(x) = x^2
     {
-        Dual<float> result = TestQuadratic(inputs.quadratic_x);
+        Value<float> result = TestQuadratic(inputs.quadratic_x);
         results[1].value = result.value;
         results[1].derivative = result.derivative;
     }
     
     // Test 2: Trigonometric - f(x) = sin(x)
     {
-        Dual<float> result = TestTrigonometric(inputs.trigonometric_x);
+        Value<float> result = TestTrigonometric(inputs.trigonometric_x);
         results[2].value = result.value;
         results[2].derivative = result.derivative;
     }
     
     // Test 3: Exponential - f(x) = exp(x)
     {
-        Dual<float> result = TestExponential(inputs.exponential_x);
+        Value<float> result = TestExponential(inputs.exponential_x);
         results[3].value = result.value;
         results[3].derivative = result.derivative;
     }
     
     // Test 4: Logarithm - f(x) = log(x)
     {
-        Dual<float> result = TestLogarithm(inputs.logarithm_x);
+        Value<float> result = TestLogarithm(inputs.logarithm_x);
         results[4].value = result.value;
         results[4].derivative = result.derivative;
     }
     
     // Test 5: Chain Rule - f(x) = sin(2x)
     {
-        Dual<float> result = TestChainRule(inputs.chain_rule_x);
+        Value<float> result = TestChainRule(inputs.chain_rule_x);
         results[5].value = result.value;
         results[5].derivative = result.derivative;
     }
     
     // Test 6: Product Rule - f(x) = x * sin(x)
     {
-        Dual<float> result = TestProductRule(inputs.product_rule_x);
+        Value<float> result = TestProductRule(inputs.product_rule_x);
         results[6].value = result.value;
         results[6].derivative = result.derivative;
     }
     
     // Test 7: Quotient Rule - f(x) = x / (x + 1)
     {
-        Dual<float> result = TestQuotientRule(inputs.quotient_rule_x);
+        Value<float> result = TestQuotientRule(inputs.quotient_rule_x);
         results[7].value = result.value;
         results[7].derivative = result.derivative;
     }
     
     // Test 8: Power Rule - f(x) = x^exponent
     {
-        Dual<float> result = TestPowerRule(inputs.power_rule_x, inputs.power_rule_exponent);
+        Value<float> result = TestPowerRule(inputs.power_rule_x, inputs.power_rule_exponent);
         results[8].value = result.value;
         results[8].derivative = result.derivative;
     }
     
     // Test 9: Complex Expression - f(x) = exp(x) * sin(x) + x^2
     {
-        Dual<float> result = TestComplexExpression(inputs.complex_expression_x);
+        Value<float> result = TestComplexExpression(inputs.complex_expression_x);
         results[9].value = result.value;
         results[9].derivative = result.derivative;
     }
     
     // Test 10: Vector Dot Product
     {
-        Dual<float> result = TestVectorDotProduct(inputs.vector_dot_x, inputs.vector_dot_scalar, inputs.vector_dot_u);
+        Value<float> result = TestVectorDotProduct(inputs.vector_dot_x, inputs.vector_dot_scalar, inputs.vector_dot_u);
         results[10].value = result.value;
         results[10].derivative = result.derivative;
     }
     
     // Test 11: Vector Length
     {
-        Dual<float> result = TestVectorLength(inputs.vector_length_x, inputs.vector_length_constant);
+        Value<float> result = TestVectorLength(inputs.vector_length_x, inputs.vector_length_constant);
         results[11].value = result.value;
         results[11].derivative = result.derivative;
     }
     
     // Test 12: Vector Normalize (store x component only for simplicity)
     {
-        Dual<vector<float, 2> > result = TestVectorNormalize(inputs.vector_normalize_x);
+        Value<vector<float, 2> > result = TestVectorNormalize(inputs.vector_normalize_x);
         results[12].value = result.value.x;
         results[12].derivative = result.derivative.x;
     }
     
     // Test 13: Matrix Multiplication (store x component only for simplicity)
     {
-        Dual<vector<float, 2> > result = TestMatrixMultiplication(inputs.matrix_mult_x, inputs.matrix_mult_v);
+        Value<vector<float, 2> > result = TestMatrixMultiplication(inputs.matrix_mult_x, inputs.matrix_mult_v);
         results[13].value = result.value.x;
         results[13].derivative = result.derivative.x;
     }
     
     // Test 14: Matrix Determinant
     {
-        Dual<float> result = TestMatrixDeterminant(inputs.matrix_det_x, inputs.matrix_det_a, inputs.matrix_det_b, inputs.matrix_det_c);
+        Value<float> result = TestMatrixDeterminant(inputs.matrix_det_x, inputs.matrix_det_a, inputs.matrix_det_b, inputs.matrix_det_c);
         results[14].value = result.value;
         results[14].derivative = result.derivative;
     }
