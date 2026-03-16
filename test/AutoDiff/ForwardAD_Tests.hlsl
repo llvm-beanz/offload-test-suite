@@ -55,7 +55,7 @@ RWStructuredBuffer<ADTestResult> ResultBuffer : register(u0);
 Value<float> TestBasicArithmetic(float input_x)
 {
     Value<float> x = variable<float>(input_x);
-    Value<float> f = getValue(add<float>(getValue(multiply<float>(Value<float>::Create(2.0f, 0.0f), x)), Value<float>::Create(3.0f, 0.0f)));
+    Value<float> f = x * 2.0f + 3.0f;
     return f;
 }
 
@@ -63,7 +63,7 @@ Value<float> TestBasicArithmetic(float input_x)
 Value<float> TestQuadratic(float input_x)
 {
     Value<float> x = variable<float>(input_x);
-    Value<float> f = getValue(multiply<float>(x, x));
+    Value<float> f = x * x;
     return f;
 }
 
@@ -71,7 +71,7 @@ Value<float> TestQuadratic(float input_x)
 Value<float> TestTrigonometric(float input_x)
 {
     Value<float> x = variable<float>(input_x);
-    Value<float> f = getValue(sinExpr<float>(x));
+    Value<float> f = sinExpr<float>(x).eval();
     return f;
 }
 
@@ -79,7 +79,7 @@ Value<float> TestTrigonometric(float input_x)
 Value<float> TestExponential(float input_x)
 {
     Value<float> x = variable<float>(input_x);
-    Value<float> f = getValue(expExpr<float>(x));
+    Value<float> f = expExpr<float>(x).eval();
     return f;
 }
 
@@ -87,7 +87,7 @@ Value<float> TestExponential(float input_x)
 Value<float> TestLogarithm(float input_x)
 {
     Value<float> x = variable<float>(input_x);
-    Value<float> f = getValue(logExpr<float>(x));
+    Value<float> f = logExpr<float>(x).eval();
     return f;
 }
 
@@ -95,7 +95,7 @@ Value<float> TestLogarithm(float input_x)
 Value<float> TestChainRule(float input_x)
 {
     Value<float> x = variable<float>(input_x);
-    Value<float> f = getValue(sinExpr<float>(getValue(multiply<float>(Value<float>::Create(2.0f, 0.0f), x))));
+    Value<float> f = sinExpr<float>(x * 2.0f).eval();
     return f;
 }
 
@@ -103,7 +103,7 @@ Value<float> TestChainRule(float input_x)
 Value<float> TestProductRule(float input_x)
 {
     Value<float> x = variable<float>(input_x);
-    Value<float> f = getValue(multiply<float>(x, getValue(sinExpr<float>(x))));
+    Value<float> f = x * sinExpr<float>(x).eval();
     return f;
 }
 
@@ -111,7 +111,7 @@ Value<float> TestProductRule(float input_x)
 Value<float> TestQuotientRule(float input_x)
 {
     Value<float> x = variable<float>(input_x);
-    Value<float> f = getValue(divide<float>(x, getValue(add<float>(x, Value<float>::Create(1.0f, 0.0f)))));
+    Value<float> f = x / (x + 1.0f);
     return f;
 }
 
@@ -119,7 +119,7 @@ Value<float> TestQuotientRule(float input_x)
 Value<float> TestPowerRule(float input_x, float exponent)
 {
     Value<float> x = variable<float>(input_x);
-    Value<float> f = getValue(power<float>(x, constant<float>(exponent)));
+    Value<float> f = power<float>(x, constant<float>(exponent)).eval();
     return f;
 }
 
@@ -128,9 +128,9 @@ Value<float> TestPowerRule(float input_x, float exponent)
 Value<float> TestComplexExpression(float input_x)
 {
     Value<float> x = variable<float>(input_x);
-    Value<float> exp_sin = getValue(multiply<float>(getValue(expExpr<float>(x)), getValue(sinExpr<float>(x))));
-    Value<float> x_squared = getValue(multiply<float>(x, x));
-    Value<float> f = getValue(add<float>(exp_sin, x_squared));
+    Value<float> exp_sin = expExpr<float>(x).eval() * sinExpr<float>(x).eval();
+    Value<float> x_squared = x * x;
+    Value<float> f = exp_sin + x_squared;
     return f;
 }
 
@@ -143,9 +143,9 @@ Value<float> TestComplexExpression(float input_x)
 Value<float> TestVectorDotProduct(float input_x, float scalar, vector<float, 2> u)
 {
     Value<float> x = variable<float>(input_x);
-    Value<vector<float, 2> > v = makeVector<float>(x, getValue(multiply<float>(Value<float>::Create(scalar, 0.0f), x)));
+    Value<vector<float, 2> > v = makeVector<float>(x, x * scalar);
     Value<vector<float, 2> > u_val = constantVector<float, 2>(u);
-    Value<float> f = getValue(dotProduct<float, 2>(v, u_val));
+    Value<float> f = dotProduct<float, 2>(v, u_val).eval();
     return f;
 }
 
@@ -155,7 +155,7 @@ Value<float> TestVectorLength(float input_x, float constant_component)
 {
     Value<float> x = variable<float>(input_x);
     Value<vector<float, 2> > v = makeVector<float>(x, constant<float>(constant_component));
-    Value<float> f = getValue(lengthExpr<float, 2>(v));
+    Value<float> f = lengthExpr<float, 2>(v).eval();
     return f;
 }
 
@@ -165,7 +165,7 @@ Value<vector<float, 2> > TestVectorNormalize(float input_x)
 {
     Value<float> x = variable<float>(input_x);
     Value<vector<float, 2> > v = makeVector<float>(x, x);
-    Value<vector<float, 2> > f = getValue(normalizeExpr<float, 2>(v));
+    Value<vector<float, 2> > f = normalizeExpr<float, 2>(v).eval();
     return f;
 }
 

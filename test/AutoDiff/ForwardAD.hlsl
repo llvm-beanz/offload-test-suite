@@ -314,8 +314,6 @@ Value<T> getValue(Value<T> d)
     return d;
 }
 
-// Removed generic getValue to avoid ambiguity with expression specializations
-
 // Helper functions to create templated expression templates - using macros to reduce duplication
 
 #define MAKE_BINARY_EXPR(ExprType) \
