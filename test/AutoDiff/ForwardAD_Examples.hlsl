@@ -230,14 +230,14 @@ void ExampleVectorOperations()
 
     // Compute dot product: f(x,y) = dot([x,y], [3,4]) = 3x + 4y
     // ∂f/∂x = 3, ∂f/∂y = 4 (but we're computing w.r.t. x with dx=1, dy=0)
-    Value<float> dot_result = dotProduct<float, 2>(v, u).eval();
+    Value<float> dot_result = dot(v,u);
 
     // Compute vector length: |[x,y]| = sqrt(x^2 + y^2)
     // d/dx[sqrt(x^2 + y^2)] = x/sqrt(x^2 + y^2)
-    Value<float> length_result = lengthExpr<float, 2>(v).eval();
+    Value<float> length_result = lengthExpr<float2>(v).eval();
 
     // Normalize vector
-    Value<vector<float, 2> > normalized = normalizeExpr<float, 2>(v).eval();
+    Value<vector<float, 2> > normalized = normalizeExpr<float2>(v).eval();
 
     float dot_val = dot_result.value;         // 3*1 + 4*2 = 11
     float dot_deriv = dot_result.derivative;  // 3 (derivative w.r.t. x)
@@ -257,7 +257,7 @@ void ExampleCrossProduct()
 
     // Compute cross product: v × u
     // [x,1,0] × [0,x,1] = [1*1-0*x, 0*0-x*1, x*x-1*0] = [1, -x, x^2]
-    Value<vector<float, 3> > cross_result = crossProduct<float>(v, u).eval();
+    Value<vector<float, 3> > cross_result = cross(v,u);
 
     // Extract components and their derivatives
     Value<float> result_x = getX(cross_result);  // value = 1, derivative = 0
@@ -331,7 +331,7 @@ void ExampleTransformationPipeline()
     // Apply rotation
     Value<vector<float, 2> > rotated = matMul<float, 2, 2, 2>(R, input).eval();
     // Compute length (should remain 1 for rotation)
-    Value<float> length_after = lengthExpr<float, 2>(rotated).eval();
+    Value<float> length_after = lengthExpr<float2>(rotated).eval();
 
     // The gradient tells us how the transformed point moves with rotation angle
     Value<float> x_component = getX(rotated);

@@ -474,23 +474,25 @@ Value<matrix<T, N, M> > constantMatrix(matrix<T, N, M> value)
 // ============================================================================
 
 // Dot Product Expression
-template<typename T, int N, typename L, typename R>
+template<typename T, typename L, typename R>
 struct DotExpr
 {
-    using ResultType = Value<T>;
+    //_Static_assert(typename hlsl::is_vector<T>::value, "Dot product is only defined for vectors");
+    using ElementType = typename hlsl::vector_traits<T>::element_type;
+    using ResultType = Value<ElementType>;
     L left;
     R right;
 
-    Value<T> eval()
+    Value<ElementType> eval()
     {
-        Value<vector<T, N> > l_val = __detail::getValue(left);
-        Value<vector<T, N> > r_val = __detail::getValue(right);
+        Value<T> l_val = __detail::getValue(left);
+        Value<T> r_val = __detail::getValue(right);
 
         // Dot product: d/dx[dot(u,v)] = dot(u',v) + dot(u,v')
-        T val = dot(l_val.value, r_val.value);
-        T deriv = dot(l_val.derivative, r_val.value) + dot(l_val.value, r_val.derivative);
+        ElementType val = dot(l_val.value, r_val.value);
+        ElementType deriv = dot(l_val.derivative, r_val.value) + dot(l_val.value, r_val.derivative);
 
-        return Value<T>::Create(val, deriv);
+        return Value<ElementType>::Create(val, deriv);
     }
 };
 
@@ -498,60 +500,65 @@ struct DotExpr
 template<typename T, typename L, typename R>
 struct CrossExpr
 {
-    using ResultType = Value<vector<T, 3> >;
+    //_Static_assert(typename hlsl::is_vector<T>::value, "Cross product is only defined for vectors");
+    //_Static_assert(typename hlsl::vector_traits<T>::num_elements == 3, "Cross product is only defined for 3D vectors");
+    using ElementType = typename hlsl::vector_traits<T>::element_type;
+    using ResultType = Value<vector<ElementType, 3> >;
     L left;
     R right;
 
-    Value<vector<T, 3> > eval()
+    Value<vector<ElementType, 3> > eval()
     {
-        Value<vector<T, 3> > l_val = __detail::getValue(left);
-        Value<vector<T, 3> > r_val = __detail::getValue(right);
+        Value<vector<ElementType, 3> > l_val = __detail::getValue(left);
+        Value<vector<ElementType, 3> > r_val = __detail::getValue(right);
 
         // Cross product: d/dx[cross(u,v)] = cross(u',v) + cross(u,v')
-        vector<T, 3> val = cross(l_val.value, r_val.value);
-        vector<T, 3> deriv = cross(l_val.derivative, r_val.value) + cross(l_val.value, r_val.derivative);
+        vector<ElementType, 3> val = cross(l_val.value, r_val.value);
+        vector<ElementType, 3> deriv = cross(l_val.derivative, r_val.value) + cross(l_val.value, r_val.derivative);
 
-        return Value<vector<T, 3> >::Create(val, deriv);
+        return Value<vector<ElementType, 3> >::Create(val, deriv);
     }
 };
 
 // Vector Length Expression
-template<typename T, int N, typename E>
+template<typename T, typename E>
 struct LengthExpr
 {
+    using ElementType = typename hlsl::vector_traits<T>::element_type;
+    using ResultType = Value<ElementType>;
+    E expr;
+
+    Value<ElementType> eval()
+    {
+        Value<T> val = __detail::getValue(expr);
+
+        // Length: d/dx[|v|] = dot(v, v') / |v|
+        ElementType len = length(val.value);
+        ElementType deriv = dot(val.value, val.derivative) / len;
+
+        return Value<ElementType>::Create(len, deriv);
+    }
+};
+
+// Vector Normalize Expression
+template<typename T, typename E>
+struct NormalizeExpr
+{
+    using ElementType = typename hlsl::vector_traits<T>::element_type;
     using ResultType = Value<T>;
     E expr;
 
     Value<T> eval()
     {
-        Value<vector<T, N> > val = __detail::getValue(expr);
-
-        // Length: d/dx[|v|] = dot(v, v') / |v|
-        T len = length(val.value);
-        T deriv = dot(val.value, val.derivative) / len;
-
-        return Value<T>::Create(len, deriv);
-    }
-};
-
-// Vector Normalize Expression
-template<typename T, int N, typename E>
-struct NormalizeExpr
-{
-    using ResultType = Value<vector<T, N> >;
-    E expr;
-
-    Value<vector<T, N> > eval()
-    {
-        Value<vector<T, N> > val = __detail::getValue(expr);
+        Value<T> val = __detail::getValue(expr);
 
         // Normalize: d/dx[normalize(v)] = (v' * |v| - v * (dot(v,v') / |v|)) / |v|²
-        T len = length(val.value);
-        vector<T, N> norm_val = normalize(val.value);
-        T dot_deriv = dot(val.value, val.derivative);
-        vector<T, N> deriv = (val.derivative * len - val.value * (dot_deriv / len)) / (len * len);
+        ElementType len = length(val.value);
+        T norm_val = normalize(val.value);
+        ElementType dot_deriv = dot(val.value, val.derivative);
+        T deriv = (val.derivative * len - val.value * (dot_deriv / len)) / (len * len);
 
-        return Value<vector<T, N> >::Create(norm_val, deriv);
+        return Value<T>::Create(norm_val, deriv);
     }
 };
 
@@ -644,31 +651,49 @@ struct DetExpr
 // Vector and Matrix Operation Functions
 // ============================================================================
 
-// Vector operations - reduce duplication with generic patterns
-template<typename T, int N, typename L, typename R>
-DotExpr<T, N, L, R> dotProduct(L left, R right)
-{
-    DotExpr<T, N, L, R> result;
-    result.left = left;
-    result.right = right;
-    return result;
+
+#define MAKE_VECTOR_BINARY_OP(opName, ExprType) \
+template<typename T, typename L, typename R> \
+ExprType<T, L, R> make##ExprType(L left, R right) \
+{ \
+    ExprType<T, L, R> result; \
+    result.left = left; \
+    result.right = right; \
+    return result; \
+} \
+namespace __detail { \
+template<typename T, typename L, typename R> \
+ExprType<T, L, R> opName(L left, R right) \
+{ \
+    return make##ExprType<T>(left, right); \
+} \
+} /* namespace __detail */ \
+template<typename T> \
+typename hlsl::enable_if<hlsl::is_vector<T>::value, typename ExprType<T, Value<T>, Value<T> >::ResultType>::type opName(Value<T> left, Value<T> right) \
+{ \
+    return __detail::opName<T>(left, right).eval(); \
+} \
+template<typename T, typename E> \
+typename hlsl::enable_if<hlsl::is_vector<E>::value, typename ExprType<T, Value<T>, E >::ResultType>::type \
+opName(Value<T> left, E right) \
+{ \
+    return __detail::opName<T>(left, right).eval(); \
+} \
+template<typename T, typename E> \
+typename hlsl::enable_if<hlsl::is_vector<E>::value, typename ExprType<T, E, Value<T> >::ResultType>::type opName(E left, Value<T> right) \
+{ \
+    return __detail::opName<T>(left, right).eval(); \
 }
 
-template<typename T, typename L, typename R>
-CrossExpr<T, L, R> crossProduct(L left, R right)
-{
-    CrossExpr<T, L, R> result;
-    result.left = left;
-    result.right = right;
-    return result;
-}
+MAKE_VECTOR_BINARY_OP(dot, DotExpr)
+MAKE_VECTOR_BINARY_OP(cross, CrossExpr)
 
 // Generic unary vector expression factory
 #define MAKE_VECTOR_UNARY_OP(OpName, ExprType) \
-template<typename T, int N, typename E> \
-ExprType<T, N, E> OpName(E expr) \
+template<typename T, typename E> \
+ExprType<T, E> OpName(E expr) \
 { \
-    ExprType<T, N, E> result; \
+    ExprType<T, E> result; \
     result.expr = expr; \
     return result; \
 }

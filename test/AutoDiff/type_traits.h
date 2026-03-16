@@ -24,6 +24,23 @@ __ARITHMETIC_TYPE(half)
 __ARITHMETIC_TYPE(float)
 __ARITHMETIC_TYPE(double)
 
+template <typename T> struct vector_traits {
+};
+
+template<typename T, int N> struct vector_traits<vector<T, N> > {
+  using element_type = T;
+  static const int num_elements = N;
+};
+
+template <typename T> struct is_vector {
+  static const bool value = false;
+};
+
+template <typename T, int N> struct is_vector<vector<T, N> > {
+  static const bool value = true;
+};
+
+
 } // namespace hlsl
 
 #endif // HLSL_TEST_AUTO_DIFF_TYPE_TRAITS_H

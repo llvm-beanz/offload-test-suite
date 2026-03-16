@@ -145,7 +145,7 @@ Value<float> TestVectorDotProduct(float input_x, float scalar, vector<float, 2> 
     Value<float> x = variable<float>(input_x);
     Value<vector<float, 2> > v = makeVector<float>(x, x * scalar);
     Value<vector<float, 2> > u_val = constantVector<float, 2>(u);
-    Value<float> f = dotProduct<float, 2>(v, u_val).eval();
+    Value<float> f = dot(v, u_val);
     return f;
 }
 
@@ -155,7 +155,7 @@ Value<float> TestVectorLength(float input_x, float constant_component)
 {
     Value<float> x = variable<float>(input_x);
     Value<vector<float, 2> > v = makeVector<float>(x, constant<float>(constant_component));
-    Value<float> f = lengthExpr<float, 2>(v).eval();
+    Value<float> f = lengthExpr<float2>(v).eval();
     return f;
 }
 
@@ -165,7 +165,7 @@ Value<vector<float, 2> > TestVectorNormalize(float input_x)
 {
     Value<float> x = variable<float>(input_x);
     Value<vector<float, 2> > v = makeVector<float>(x, x);
-    Value<vector<float, 2> > f = normalizeExpr<float, 2>(v).eval();
+    Value<vector<float, 2> > f = normalizeExpr<float2>(v).eval();
     return f;
 }
 
