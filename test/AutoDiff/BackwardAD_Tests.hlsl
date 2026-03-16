@@ -4,6 +4,8 @@
 // Test Suite for Backward Automatic Differentiation
 // ============================================================================
 
+#define AUTO_VAR(var, expr) __decltype(expr) var = expr;
+
 // Structure to store individual test results
 struct BackADTestResult
 {
@@ -85,7 +87,7 @@ BackADTestResult TestBackwardQuadratic(float input_x)
 
     Variable<float> x = variable<float>(context, input_x);
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
-    BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > f = multiply<float>(x_expr, x_expr);
+    AUTO_VAR(f, multiply<float>(x_expr, x_expr));
 
     result.value = compute_gradients<float>(context, f);
     result.gradient = x.gradient(context);
@@ -101,7 +103,7 @@ BackADTestResult TestBackwardSine(float input_x)
 
     Variable<float> x = variable<float>(context, input_x);
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
-    BackSinExpr<float, VariableExpr<float> > f = sinExpr<float>(x_expr);
+    AUTO_VAR(f, sinExpr<float>(x_expr));
 
     result.value = compute_gradients<float>(context, f);
     result.gradient = x.gradient(context);
@@ -117,7 +119,7 @@ BackADTestResult TestBackwardExponential(float input_x)
 
     Variable<float> x = variable<float>(context, input_x);
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
-    BackExpExpr<float, VariableExpr<float> > f = expExpr<float>(x_expr);
+    AUTO_VAR(f, expExpr<float>(x_expr));
 
     result.value = compute_gradients<float>(context, f);
     result.gradient = x.gradient(context);
@@ -133,7 +135,7 @@ BackADTestResult TestBackwardLogarithm(float input_x)
 
     Variable<float> x = variable<float>(context, input_x);
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
-    BackLogExpr<float, VariableExpr<float> > f = logExpr<float>(x_expr);
+    AUTO_VAR(f, logExpr<float>(x_expr));
 
     result.value = compute_gradients<float>(context, f);
     result.gradient = x.gradient(context);
@@ -149,8 +151,8 @@ BackADTestResult TestBackwardChainRule(float input_x)
 
     Variable<float> x = variable<float>(context, input_x);
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
-    BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > x_squared = multiply<float>(x_expr, x_expr);
-    BackSinExpr<float, BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > > f = sinExpr<float>(x_squared);
+    AUTO_VAR(x_squared, multiply<float>(x_expr, x_expr));
+    AUTO_VAR(f, sinExpr<float>(x_squared));
 
     result.value = compute_gradients<float>(context, f);
     result.gradient = x.gradient(context);
@@ -166,8 +168,8 @@ BackADTestResult TestBackwardProductRule(float input_x)
 
     Variable<float> x = variable<float>(context, input_x);
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
-    BackSinExpr<float, VariableExpr<float> > sin_x = sinExpr<float>(x_expr);
-    BackMulExpr<float, VariableExpr<float>, BackSinExpr<float, VariableExpr<float> > > f = multiply<float>(x_expr, sin_x);
+    AUTO_VAR(sin_x, sinExpr<float>(x_expr));
+    AUTO_VAR(f, multiply<float>(x_expr, sin_x));
 
     result.value = compute_gradients<float>(context, f);
     result.gradient = x.gradient(context);
@@ -185,7 +187,7 @@ BackADTestResult TestBackwardAddition(float input_x, float input_y)
     Variable<float> y = variable<float>(context, input_y);
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
     VariableExpr<float> y_expr = makeVariableExpr<float>(y);
-    BackAddExpr<float, VariableExpr<float>, VariableExpr<float> > f = add<float>(x_expr, y_expr);
+    AUTO_VAR(f, add<float>(x_expr, y_expr));
 
     result.value = compute_gradients<float>(context, f);
     result.gradient = x.gradient(context);
@@ -203,7 +205,7 @@ BackADTestResult TestBackwardMultiplication(float input_x, float input_y)
     Variable<float> y = variable<float>(context, input_y);
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
     VariableExpr<float> y_expr = makeVariableExpr<float>(y);
-    BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > f = multiply<float>(x_expr, y_expr);
+    AUTO_VAR(f, multiply<float>(x_expr, y_expr));
 
     result.value = compute_gradients<float>(context, f);
     result.gradient = x.gradient(context);
@@ -221,7 +223,7 @@ BackADTestResult TestBackwardDivision(float input_x, float input_y)
     Variable<float> y = variable<float>(context, input_y);
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
     VariableExpr<float> y_expr = makeVariableExpr<float>(y);
-    BackDivExpr<float, VariableExpr<float>, VariableExpr<float> > f = divide<float>(x_expr, y_expr);
+    AUTO_VAR(f, divide<float>(x_expr, y_expr));
 
     result.value = compute_gradients<float>(context, f);
     result.gradient = x.gradient(context);
@@ -240,13 +242,13 @@ BackADTestResult TestBackwardComplexExpression(float input_x, float input_y)
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
     VariableExpr<float> y_expr = makeVariableExpr<float>(y);
 
-    BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > x_squared = multiply<float>(x_expr, x_expr);
-    BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > y_squared = multiply<float>(y_expr, y_expr);
-    BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > xy = multiply<float>(x_expr, y_expr);
-    BackMulExpr<float, float, BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > > two_xy = multiply<float>(2.0f, xy);
+    AUTO_VAR(x_squared, multiply<float>(x_expr, x_expr));
+    AUTO_VAR(y_squared, multiply<float>(y_expr, y_expr));
+    AUTO_VAR(xy, multiply<float>(x_expr, y_expr));
+    AUTO_VAR(two_xy, multiply<float>(2.0f, xy));
 
-    BackAddExpr<float, BackMulExpr<float, VariableExpr<float>, VariableExpr<float> >, BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > > x2_plus_y2 = add<float>(x_squared, y_squared);
-    BackSubExpr<float, BackAddExpr<float, BackMulExpr<float, VariableExpr<float>, VariableExpr<float> >, BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > >, BackMulExpr<float, float, BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > > > f = subtract<float>(x2_plus_y2, two_xy);
+    AUTO_VAR(x2_plus_y2, add<float>(x_squared, y_squared));
+    AUTO_VAR(f, subtract<float>(x2_plus_y2, two_xy));
 
     result.value = compute_gradients<float>(context, f);
     result.gradient = x.gradient(context);
@@ -272,7 +274,7 @@ BackADTestResult TestBackwardVectorDot(float ux, float uy, float vx, float vy)
     v_expr.var.value = vector<float, 2>(vx, vy);
     v_expr.var.id = -1;
 
-    BackDotExpr<float, 2, VariableExpr<vector<float, 2> >, VariableExpr<vector<float, 2> > > f = dotProduct<float, 2>(u_expr, v_expr);
+    AUTO_VAR(f, dotProduct<float2>(u_expr, v_expr));
 
     result.value = compute_gradients(context, f);
     vector<float, 2> grad = u.gradient(context);
@@ -291,7 +293,7 @@ BackADTestResult TestBackwardVectorLength(float vx, float vy)
     VariableExpr<vector<float, 2> > v_expr;
     v_expr.var = v;
 
-    BackLengthExpr<float, 2, VariableExpr<vector<float, 2> > > f = lengthExpr<float, 2>(v_expr);
+    AUTO_VAR(f, (lengthExpr<float, 2>(v_expr)));
 
     result.value = compute_gradients(context, f);
     vector<float, 2> grad = v.gradient(context);
@@ -310,7 +312,7 @@ BackADTestResult TestBackwardMatrixDeterminant(float a, float b, float c, float 
     VariableExpr<matrix<float, 2, 2> > M_expr;
     M_expr.var = M;
 
-    BackDet2x2Expr<float, VariableExpr<matrix<float, 2, 2> > > f = determinantExpr<float>(M_expr);
+    AUTO_VAR(f, determinantExpr<float>(M_expr));
 
     result.value = compute_gradients(context, f);
     matrix<float, 2, 2> grad = M.gradient(context);
@@ -332,7 +334,7 @@ BackADTestResult TestBackwardPower(float input_x, float exponent)
     Variable<float> n = variable<float>(context, exponent);
     VariableExpr<float> n_expr = makeVariableExpr<float>(n);
 
-    BackPowExpr<float, VariableExpr<float>, VariableExpr<float> > f = power<float>(x_expr, n_expr);
+    AUTO_VAR(f, power<float>(x_expr, n_expr));
 
     result.value = compute_gradients<float>(context, f);
     result.gradient = x.gradient(context);
@@ -348,7 +350,7 @@ BackADTestResult TestBackwardNegate(float input_x)
 
     Variable<float> x = variable<float>(context, input_x);
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
-    BackNegExpr<float, VariableExpr<float> > f = negate<float>(x_expr);
+    AUTO_VAR(f, negate<float>(x_expr));
 
     result.value = compute_gradients<float>(context, f);
     result.gradient = x.gradient(context);
@@ -364,7 +366,7 @@ BackADTestResult TestBackwardCosine(float input_x)
 
     Variable<float> x = variable<float>(context, input_x);
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
-    BackCosExpr<float, VariableExpr<float> > f = cosExpr<float>(x_expr);
+    AUTO_VAR(f, cosExpr<float>(x_expr));
 
     result.value = compute_gradients<float>(context, f);
     result.gradient = x.gradient(context);
@@ -380,7 +382,7 @@ BackADTestResult TestBackwardSqrt(float input_x)
 
     Variable<float> x = variable<float>(context, input_x);
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
-    BackSqrtExpr<float, VariableExpr<float> > f = sqrtExpr<float>(x_expr);
+    AUTO_VAR(f, sqrtExpr<float>(x_expr));
 
     result.value = compute_gradients<float>(context, f);
     result.gradient = x.gradient(context);
@@ -398,7 +400,7 @@ BackADTestResult TestBackwardNormalize(float vx, float vy)
     VariableExpr<vector<float, 2> > v_expr;
     v_expr.var = v;
 
-    BackNormalizeExpr<float, 2, VariableExpr<vector<float, 2> > > f = normalizeExpr<float, 2>(v_expr);
+    AUTO_VAR(f, (normalizeExpr<float, 2>(v_expr)));
 
     vector<float, 2> fval = compute_gradients(context, f);
     result.value = fval.x;
@@ -422,7 +424,7 @@ BackADTestResult TestBackwardCrossProduct(float ux, float uy, float uz, float vx
     v_expr.var.value = vector<float, 3>(vx, vy, vz);
     v_expr.var.id = -1;
 
-    BackCrossExpr<float, VariableExpr<vector<float, 3> >, VariableExpr<vector<float, 3> > > f = crossProduct<float>(u_expr, v_expr);
+    AUTO_VAR(f, crossProduct<float>(u_expr, v_expr));
 
     vector<float, 3> fval = compute_gradients(context, f);
     result.value = fval.x;
@@ -448,7 +450,7 @@ BackADTestResult TestBackwardMatVecMul(float m00, float m01, float m10, float m1
     M_expr.var.value = matrix<float, 2, 2>(m00, m01, m10, m11);
     M_expr.var.id = -1;
 
-    BackMatVecMulExpr<float, 2, 2, VariableExpr<matrix<float, 2, 2> >, VariableExpr<vector<float, 2> > > f = matVecMul<float, 2, 2>(M_expr, v_expr);
+    AUTO_VAR(f, (matVecMul<float, 2, 2>(M_expr, v_expr)));
 
     vector<float, 2> fval = compute_gradients(context, f);
     result.value = fval.x;

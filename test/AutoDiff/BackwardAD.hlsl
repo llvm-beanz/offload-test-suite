@@ -1,11 +1,12 @@
 #ifndef BACKWARD_AD_HLSL
 #define BACKWARD_AD_HLSL
 
+#include "type_traits.h"
 // ============================================================================
 // Backward Automatic Differentiation for HLSL - Templated Version
 // ============================================================================
-// This header provides reverse-mode automatic differentiation using expression 
-// templates. Backward mode is efficient for functions with many inputs and 
+// This header provides reverse-mode automatic differentiation using expression
+// templates. Backward mode is efficient for functions with many inputs and
 // few outputs (like gradients for optimization).
 
 // ============================================================================
@@ -17,7 +18,7 @@ struct GradientContext
 {
     T gradients[MaxVars];
     int variable_count;
-    
+
     void reset()
     {
         for (int i = 0; i < variable_count; i++)
@@ -26,7 +27,7 @@ struct GradientContext
         }
         variable_count = 0;
     }
-    
+
     void zeroGradients()
     {
         for (int i = 0; i < variable_count; i++)
@@ -34,7 +35,7 @@ struct GradientContext
             gradients[i] = (T)0;
         }
     }
-    
+
     int allocateVariable()
     {
         int id = variable_count;
@@ -52,13 +53,13 @@ struct Variable
 {
     T value;
     int id;
-    
+
     // Get the current gradient for this variable from context
     T gradient(inout GradientContext<T> context)
     {
         return context.gradients[id];
     }
-    
+
     // Reset gradient to zero in context
     void zeroGradient(inout GradientContext<T> context)
     {
@@ -76,12 +77,12 @@ template<typename T>
 struct VariableExpr
 {
     Variable<T> var;
-    
+
     T forward()
     {
         return var.value;
     }
-    
+
     void backward(inout GradientContext<T> context, T gradient)
     {
         // Accumulate gradient for this variable
@@ -98,12 +99,12 @@ struct BackAddExpr
 {
     L left;
     R right;
-    
+
     T forward()
     {
         return left.forward() + right.forward();
     }
-    
+
     void backward(inout GradientContext<T> context, T gradient)
     {
         // d(left + right)/dleft = 1, d(left + right)/dright = 1
@@ -122,12 +123,12 @@ struct BackAddExpr<T, T, R>
 {
     T left;        // scalar constant
     R right;       // expression
-    
+
     T forward()
     {
         return left + right.forward();
     }
-    
+
     void backward(inout GradientContext<T> context, T gradient)
     {
         // d(scalar + right)/dright = 1
@@ -142,12 +143,12 @@ struct BackAddExpr<T, L, T>
 {
     L left;        // expression
     T right;       // scalar constant
-    
+
     T forward()
     {
         return left.forward() + right;
     }
-    
+
     void backward(inout GradientContext<T> context, T gradient)
     {
         // d(left + scalar)/dleft = 1
@@ -165,12 +166,12 @@ struct BackSubExpr
 {
     L left;
     R right;
-    
+
     T forward()
     {
         return left.forward() - right.forward();
     }
-    
+
     void backward(inout GradientContext<T> context, T gradient)
     {
         // d(left - right)/dleft = 1, d(left - right)/dright = -1
@@ -179,7 +180,7 @@ struct BackSubExpr
     }
 };
 
-// ============================================================================  
+// ============================================================================
 // Scalar-Expression Subtraction
 // ============================================================================
 
@@ -189,16 +190,16 @@ struct BackSubExpr<T, T, R>
 {
     T left;        // scalar constant
     R right;       // expression
-    
+
     T forward()
     {
         return left - right.forward();
     }
-    
+
     void backward(inout GradientContext<T> context, T gradient)
     {
         // d(scalar - right)/dright = -1
-        // No gradient for scalar constant  
+        // No gradient for scalar constant
         right.backward(context, -gradient);
     }
 };
@@ -209,12 +210,12 @@ struct BackSubExpr<T, L, T>
 {
     L left;        // expression
     T right;       // scalar constant
-    
+
     T forward()
     {
         return left.forward() - right;
     }
-    
+
     void backward(inout GradientContext<T> context, T gradient)
     {
         // d(left - scalar)/dleft = 1
@@ -234,14 +235,14 @@ struct BackMulExpr
     R right;
     T left_val;
     T right_val;
-    
+
     T forward()
     {
         left_val = left.forward();
         right_val = right.forward();
         return left_val * right_val;
     }
-    
+
     void backward(inout GradientContext<T> context, T gradient)
     {
         // d(left * right)/dleft = right, d(left * right)/dright = left
@@ -261,14 +262,14 @@ struct BackMulExpr<T, T, R>
     R right;       // expression
     T left_val;
     T right_val;
-    
+
     T forward()
     {
         left_val = left;  // scalar value
         right_val = right.forward();  // expression value
         return left_val * right_val;
     }
-    
+
     void backward(inout GradientContext<T> context, T gradient)
     {
         // d(scalar * right)/dright = scalar
@@ -285,14 +286,14 @@ struct BackMulExpr<T, L, T>
     T right;       // scalar constant
     T left_val;
     T right_val;
-    
+
     T forward()
     {
         left_val = left.forward();  // expression value
         right_val = right;  // scalar value
         return left_val * right_val;
     }
-    
+
     void backward(inout GradientContext<T> context, T gradient)
     {
         // d(left * scalar)/dleft = scalar
@@ -312,14 +313,14 @@ struct BackDivExpr
     R right;
     T left_val;
     T right_val;
-    
+
     T forward()
     {
         left_val = left.forward();
         right_val = right.forward();
         return left_val / right_val;
     }
-    
+
     void backward(inout GradientContext<T> context, T gradient)
     {
         // d(left / right)/dleft = 1/right, d(left / right)/dright = -left/right^2
@@ -340,14 +341,14 @@ struct BackDivExpr<T, T, R>
     R right;       // expression
     T left_val;
     T right_val;
-    
+
     T forward()
     {
         left_val = left;  // scalar value
         right_val = right.forward();  // expression value
         return left_val / right_val;
     }
-    
+
     void backward(inout GradientContext<T> context, T gradient)
     {
         // d(scalar / right)/dright = -scalar/right^2
@@ -364,14 +365,14 @@ struct BackDivExpr<T, L, T>
     T right;       // scalar constant
     T left_val;
     T right_val;
-    
+
     T forward()
     {
         left_val = left.forward();  // expression value
         right_val = right;  // scalar value
         return left_val / right_val;
     }
-    
+
     void backward(inout GradientContext<T> context, T gradient)
     {
         // d(left / scalar)/dleft = 1/scalar
@@ -392,7 +393,7 @@ struct BackPowExpr
     T base_val;
     T exp_val;
     T result_val;
-    
+
     T forward()
     {
         base_val = base.forward();
@@ -400,7 +401,7 @@ struct BackPowExpr
         result_val = pow(base_val, exp_val);
         return result_val;
     }
-    
+
     void backward(inout GradientContext<T> context, T gradient)
     {
         // d(base^exp)/dbase = exp * base^(exp-1)
@@ -418,12 +419,12 @@ template<typename T, typename E>
 struct BackNegExpr
 {
     E expr;
-    
+
     T forward()
     {
         return -expr.forward();
     }
-    
+
     void backward(inout GradientContext<T> context, T gradient)
     {
         // d(-expr)/dexpr = -1
@@ -440,13 +441,13 @@ struct BackSinExpr
 {
     E expr;
     T expr_val;
-    
+
     T forward()
     {
         expr_val = expr.forward();
         return sin(expr_val);
     }
-    
+
     void backward(inout GradientContext<T> context, T gradient)
     {
         // d(sin(x))/dx = cos(x)
@@ -459,13 +460,13 @@ struct BackCosExpr
 {
     E expr;
     T expr_val;
-    
+
     T forward()
     {
         expr_val = expr.forward();
         return cos(expr_val);
     }
-    
+
     void backward(inout GradientContext<T> context, T gradient)
     {
         // d(cos(x))/dx = -sin(x)
@@ -482,14 +483,14 @@ struct BackExpExpr
 {
     E expr;
     T result_val;
-    
+
     T forward()
     {
         T expr_val = expr.forward();
         result_val = exp(expr_val);
         return result_val;
     }
-    
+
     void backward(inout GradientContext<T> context, T gradient)
     {
         // d(exp(x))/dx = exp(x)
@@ -502,13 +503,13 @@ struct BackLogExpr
 {
     E expr;
     T expr_val;
-    
+
     T forward()
     {
         expr_val = expr.forward();
         return log(expr_val);
     }
-    
+
     void backward(inout GradientContext<T> context, T gradient)
     {
         // d(log(x))/dx = 1/x
@@ -526,14 +527,14 @@ struct BackSqrtExpr
     E expr;
     T expr_val;
     T result_val;
-    
+
     T forward()
     {
         expr_val = expr.forward();
         result_val = sqrt(expr_val);
         return result_val;
     }
-    
+
     void backward(inout GradientContext<T> context, T gradient)
     {
         // d(sqrt(x))/dx = 1/(2*sqrt(x))
@@ -660,7 +661,7 @@ T compute_gradients(inout GradientContext<T> context, VariableExpr<T> var_expr)
 }
 
 MAKE_COMPUTE_GRADIENTS_BINARY(BackAddExpr)
-MAKE_COMPUTE_GRADIENTS_BINARY(BackSubExpr)  
+MAKE_COMPUTE_GRADIENTS_BINARY(BackSubExpr)
 MAKE_COMPUTE_GRADIENTS_BINARY(BackMulExpr)
 MAKE_COMPUTE_GRADIENTS_BINARY(BackDivExpr)
 MAKE_COMPUTE_GRADIENTS_BINARY(BackPowExpr)
@@ -681,22 +682,24 @@ MAKE_COMPUTE_GRADIENTS_UNARY(BackSqrtExpr)
 // ============================================================================
 
 // Vector Dot Product
-template<typename T, int N, typename L, typename R>
+template<typename T, typename L, typename R>
 struct BackDotExpr
 {
     L left;
     R right;
-    vector<T, N> left_val;
-    vector<T, N> right_val;
-    
-    T forward()
+    T left_val;
+    T right_val;
+
+    using ElementType = typename hlsl::vector_traits<T>::element_type;
+
+    ElementType forward()
     {
         left_val = left.forward();
         right_val = right.forward();
         return dot(left_val, right_val);
     }
-    
-    void backward(inout GradientContext<vector<T, N> > context, T gradient)
+
+    void backward(inout GradientContext<T> context, ElementType gradient)
     {
         // d(dot(u,v))/du = v, d(dot(u,v))/dv = u
         left.backward(context, right_val * gradient);
@@ -712,14 +715,14 @@ struct BackCrossExpr
     R right;
     vector<T, 3> left_val;
     vector<T, 3> right_val;
-    
+
     vector<T, 3> forward()
     {
         left_val = left.forward();
         right_val = right.forward();
         return cross(left_val, right_val);
     }
-    
+
     void backward(inout GradientContext<vector<T, 3> > context, vector<T, 3> gradient)
     {
         // d(cross(u,v))/du = cross(gradient, v), d(cross(u,v))/dv = cross(u, gradient)
@@ -735,14 +738,14 @@ struct BackLengthExpr
     E expr;
     vector<T, N> expr_val;
     T result_val;
-    
+
     T forward()
     {
         expr_val = expr.forward();
         result_val = length(expr_val);
         return result_val;
     }
-    
+
     void backward(inout GradientContext<vector<T, N> > context, T gradient)
     {
         // d(|v|)/dv = v / |v|
@@ -758,7 +761,7 @@ struct BackNormalizeExpr
     vector<T, N> expr_val;
     vector<T, N> result_val;
     T length_val;
-    
+
     vector<T, N> forward()
     {
         expr_val = expr.forward();
@@ -766,7 +769,7 @@ struct BackNormalizeExpr
         result_val = normalize(expr_val);
         return result_val;
     }
-    
+
     void backward(inout GradientContext<vector<T, N> > context, vector<T, N> gradient)
     {
         // d(normalize(v))/dv = (I - normalize(v) * normalize(v)^T) / |v|
@@ -789,14 +792,14 @@ struct BackMatVecMulExpr
     R right;  // Vector K
     matrix<T, N, K> left_val;
     vector<T, K> right_val;
-    
+
     vector<T, N> forward()
     {
         left_val = left.forward();
         right_val = right.forward();
         return mul(left_val, right_val);
     }
-    
+
     void backward(inout GradientContext<vector<T, N> > context, vector<T, N> gradient)
     {
         // d(A*v)/dA = v * gradient^T, d(A*v)/dv = A^T * gradient
@@ -811,13 +814,13 @@ struct BackDet2x2Expr
 {
     E expr;
     matrix<T, 2, 2> expr_val;
-    
+
     T forward()
     {
         expr_val = expr.forward();
         return determinant(expr_val);
     }
-    
+
     void backward(inout GradientContext<matrix<T, 2, 2> > context, T gradient)
     {
         // d(det(M))/dM = adj(M)^T where adj is adjugate matrix
@@ -825,9 +828,9 @@ struct BackDet2x2Expr
         matrix<T, 2, 2> adj_matrix;
         adj_matrix[0][0] = expr_val[1][1];  // d
         adj_matrix[0][1] = -expr_val[0][1]; // -b
-        adj_matrix[1][0] = -expr_val[1][0]; // -c  
+        adj_matrix[1][0] = -expr_val[1][0]; // -c
         adj_matrix[1][1] = expr_val[0][0];  // a
-        
+
         expr.backward(context, adj_matrix * gradient);
     }
 };
@@ -860,10 +863,10 @@ Variable<matrix<T, N, M> > variableMatrix(inout GradientContext<matrix<T, N, M> 
 // Vector/Matrix Expression Creation Functions - Reduced Duplication
 // ============================================================================
 
-template<typename T, int N, typename L, typename R>
-BackDotExpr<T, N, L, R> dotProduct(L left, R right)
+template<typename T, typename L, typename R>
+BackDotExpr<T, L, R> dotProduct(L left, R right)
 {
-    BackDotExpr<T, N, L, R> expr;
+    BackDotExpr<T, L, R> expr;
     expr.left = left;
     expr.right = right;
     return expr;
@@ -915,12 +918,13 @@ BackDet2x2Expr<T, E> determinantExpr(E expr)
 // Note: Vector/matrix compute_gradients have different context and seed types
 // so they need individual implementations, but can share some patterns
 
-template<typename T, int N, typename L, typename R>
-T compute_gradients(inout GradientContext<vector<T, N> > context, BackDotExpr<T, N, L, R> expr)
+template<typename T, typename L, typename R>
+typename hlsl::vector_traits<T>::element_type compute_gradients(inout GradientContext<T> context, BackDotExpr<T, L, R> expr)
 {
+    using ElementType = typename hlsl::vector_traits<T>::element_type;
     context.zeroGradients();
-    T result = expr.forward();
-    expr.backward(context, (T)1);
+    ElementType result = expr.forward();
+    expr.backward(context, (ElementType)1);
     return result;
 }
 
