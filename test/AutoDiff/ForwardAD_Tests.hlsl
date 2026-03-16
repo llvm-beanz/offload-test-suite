@@ -27,7 +27,7 @@ struct ADTestInputs
     float power_rule_x;
     float power_rule_exponent;
     float complex_expression_x;
-    
+
     // Vector test inputs
     float vector_dot_x;
     float vector_dot_scalar;
@@ -35,8 +35,8 @@ struct ADTestInputs
     float vector_length_x;
     float vector_length_constant;
     float vector_normalize_x;
-    
-    // Matrix test inputs  
+
+    // Matrix test inputs
     float matrix_mult_x;
     float2 matrix_mult_v;
     float matrix_det_x;
@@ -174,30 +174,30 @@ Value<vector<float, 2> > TestVectorNormalize(float input_x)
 Value<vector<float, 2> > TestMatrixMultiplication(float input_x, vector<float, 2> v_const)
 {
     Value<float> x = variable<float>(input_x);
-    
+
     // Create matrix [[x, 0], [0, 1]]
     matrix<float, 2, 2> mat_val = matrix<float, 2, 2>(x.value, 0, 0, 1);
     matrix<float, 2, 2> mat_deriv = matrix<float, 2, 2>(x.derivative, 0, 0, 0);
     Value<matrix<float, 2, 2> > A = Value<matrix<float, 2, 2> >::Create(mat_val, mat_deriv);
-    
+
     Value<vector<float, 2> > v = constantVector<float, 2>(v_const);
-    Value<vector<float, 2> > f = getValue(matMul<float, 2, 2, 2>(A, v));
+    Value<vector<float, 2> > f = matMul<float, 2, 2, 2>(A, v).eval();
     return f;
 }
 
-// Test matrix determinant differentiation  
+// Test matrix determinant differentiation
 // f(x) = det([[x, a], [b, c]]) = x*c - a*b
 // f'(x) = c
 Value<float> TestMatrixDeterminant(float input_x, float a, float b, float c)
 {
     Value<float> x = variable<float>(input_x);
-    
+
     // Create matrix [[x, a], [b, c]]
     matrix<float, 2, 2> mat_val = matrix<float, 2, 2>(x.value, a, b, c);
     matrix<float, 2, 2> mat_deriv = matrix<float, 2, 2>(x.derivative, 0, 0, 0);
     Value<matrix<float, 2, 2> > A = Value<matrix<float, 2, 2> >::Create(mat_val, mat_deriv);
-    
-    Value<float> f = getValue(determinantExpr<float, 2>(A));
+
+    Value<float> f = determinantExpr<float, 2>(A).eval();
     return f;
 }
 
@@ -206,118 +206,118 @@ Value<float> TestMatrixDeterminant(float input_x, float a, float b, float c)
 void RunAllTests(uint3 DispatchThreadID : SV_DispatchThreadID)
 {
     uint threadIndex = DispatchThreadID.x;
-    
+
     // Read test inputs from CPU-provided buffer for this thread
     ADTestInputs inputs = InputBuffer[threadIndex];
-    
+
     // Collect all test results in local array
     ADTestResult results[15];
-    
+
     // Test 0: Basic Arithmetic - f(x) = 2x + 3
     {
         Value<float> result = TestBasicArithmetic(inputs.basic_arithmetic_x);
         results[0].value = result.value;
         results[0].derivative = result.derivative;
     }
-    
+
     // Test 1: Quadratic - f(x) = x^2
     {
         Value<float> result = TestQuadratic(inputs.quadratic_x);
         results[1].value = result.value;
         results[1].derivative = result.derivative;
     }
-    
+
     // Test 2: Trigonometric - f(x) = sin(x)
     {
         Value<float> result = TestTrigonometric(inputs.trigonometric_x);
         results[2].value = result.value;
         results[2].derivative = result.derivative;
     }
-    
+
     // Test 3: Exponential - f(x) = exp(x)
     {
         Value<float> result = TestExponential(inputs.exponential_x);
         results[3].value = result.value;
         results[3].derivative = result.derivative;
     }
-    
+
     // Test 4: Logarithm - f(x) = log(x)
     {
         Value<float> result = TestLogarithm(inputs.logarithm_x);
         results[4].value = result.value;
         results[4].derivative = result.derivative;
     }
-    
+
     // Test 5: Chain Rule - f(x) = sin(2x)
     {
         Value<float> result = TestChainRule(inputs.chain_rule_x);
         results[5].value = result.value;
         results[5].derivative = result.derivative;
     }
-    
+
     // Test 6: Product Rule - f(x) = x * sin(x)
     {
         Value<float> result = TestProductRule(inputs.product_rule_x);
         results[6].value = result.value;
         results[6].derivative = result.derivative;
     }
-    
+
     // Test 7: Quotient Rule - f(x) = x / (x + 1)
     {
         Value<float> result = TestQuotientRule(inputs.quotient_rule_x);
         results[7].value = result.value;
         results[7].derivative = result.derivative;
     }
-    
+
     // Test 8: Power Rule - f(x) = x^exponent
     {
         Value<float> result = TestPowerRule(inputs.power_rule_x, inputs.power_rule_exponent);
         results[8].value = result.value;
         results[8].derivative = result.derivative;
     }
-    
+
     // Test 9: Complex Expression - f(x) = exp(x) * sin(x) + x^2
     {
         Value<float> result = TestComplexExpression(inputs.complex_expression_x);
         results[9].value = result.value;
         results[9].derivative = result.derivative;
     }
-    
+
     // Test 10: Vector Dot Product
     {
         Value<float> result = TestVectorDotProduct(inputs.vector_dot_x, inputs.vector_dot_scalar, inputs.vector_dot_u);
         results[10].value = result.value;
         results[10].derivative = result.derivative;
     }
-    
+
     // Test 11: Vector Length
     {
         Value<float> result = TestVectorLength(inputs.vector_length_x, inputs.vector_length_constant);
         results[11].value = result.value;
         results[11].derivative = result.derivative;
     }
-    
+
     // Test 12: Vector Normalize (store x component only for simplicity)
     {
         Value<vector<float, 2> > result = TestVectorNormalize(inputs.vector_normalize_x);
         results[12].value = result.value.x;
         results[12].derivative = result.derivative.x;
     }
-    
+
     // Test 13: Matrix Multiplication (store x component only for simplicity)
     {
         Value<vector<float, 2> > result = TestMatrixMultiplication(inputs.matrix_mult_x, inputs.matrix_mult_v);
         results[13].value = result.value.x;
         results[13].derivative = result.derivative.x;
     }
-    
+
     // Test 14: Matrix Determinant
     {
         Value<float> result = TestMatrixDeterminant(inputs.matrix_det_x, inputs.matrix_det_a, inputs.matrix_det_b, inputs.matrix_det_c);
         results[14].value = result.value;
         results[14].derivative = result.derivative;
     }
-    
+
     // Write all results to structured buffer at thread-specific indices
     uint baseIndex = threadIndex * 15;
     for (int i = 0; i < 15; i++)

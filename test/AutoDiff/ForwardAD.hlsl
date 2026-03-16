@@ -1,18 +1,13 @@
 #ifndef FORWARD_AD_HLSL
 #define FORWARD_AD_HLSL
 
+#include "type_traits.h"
+#include "enable_if.h"
+
 namespace ad {
 namespace fwd {
 // Forward Automatic Differentiation for HLSL
 // This header provides Value numbers for automatic differentiation with templated types
-
-// ============================================================================
-// Forward declarations 
-// ============================================================================
-
-// Template Value structure for different numeric types
-template<typename T>
-struct Value;
 
 // ============================================================================
 // Value Number Structure - templated for different types
@@ -23,7 +18,7 @@ struct Value
 {
     T value;
     T derivative;
-    
+
     // Static creation functions
     static Value<T> Create(T v, T d)
     {
@@ -32,7 +27,7 @@ struct Value
         result.derivative = d;
         return result;
     }
-    
+
     static Value<T> CreateValue(T v)
     {
         Value<T> result;
@@ -40,7 +35,7 @@ struct Value
         result.derivative = (T)0;
         return result;
     }
-    
+
     static Value<T> CreateZero()
     {
         Value<T> result;
@@ -48,62 +43,114 @@ struct Value
         result.derivative = (T)0;
         return result;
     }
-    
+
     // Member operators
     Value<T> operator+(Value<T> other)
     {
         return Value<T>::Create(value + other.value, derivative + other.derivative);
     }
-    
+
     Value<T> operator+(T other)
     {
         return Value<T>::Create(value + other, derivative);
     }
-    
+
     Value<T> operator-(Value<T> other)
     {
         return Value<T>::Create(value - other.value, derivative - other.derivative);
     }
-    
+
     Value<T> operator-(T other)
     {
         return Value<T>::Create(value - other, derivative);
     }
-    
+
     Value<T> operator*(Value<T> other)
     {
-        return Value<T>::Create(value * other.value, 
+        return Value<T>::Create(value * other.value,
                        derivative * other.value + value * other.derivative);
     }
-    
+
     Value<T> operator*(T other)
     {
         return Value<T>::Create(value * other, derivative * other);
     }
-    
+
     Value<T> operator/(Value<T> other)
     {
         T denom = other.value * other.value;
         return Value<T>::Create(value / other.value,
                        (derivative * other.value - value * other.derivative) / denom);
     }
-    
+
     Value<T> operator/(T other)
     {
         return Value<T>::Create(value / other, derivative / other);
     }
-    
+
+    // Unary operator overloading does not work on DXC:
+    // https://github.com/microsoft/DirectXShaderCompiler/issues/7944
+    // This code will work with Clang so it is left here.
+  #if !__hlsl_dx_compiler
     Value<T> operator-()
     {
         return Value<T>::Create(-value, -derivative);
     }
+  #endif
 };
 
+#if !__hlsl_dx_compiler
+// Non-member operator overloading does not work in DXC, so these are only
+// available when using Clang.
+template<typename T>
+Value<T> operator+(T lhs, Value<T> rhs)
+{
+    return Value<T>::Create(lhs + rhs.value, rhs.derivative);
+}
+
+template<typename T>
+Value<T> operator-(T lhs, Value<T> rhs)
+{
+    return Value<T>::Create(lhs - rhs.value, -rhs.derivative);
+}
+
+template<typename T>
+Value<T> operator*(T lhs, Value<T> rhs)
+{
+    return Value<T>::Create(lhs * rhs.value, lhs * rhs.derivative);
+}
+
+template<typename T>
+Value<T> operator/(T lhs, Value<T> rhs)
+{
+    return Value<T>::Create(lhs / rhs.value, -lhs * rhs.derivative / (rhs.value * rhs.value));
+}
+#endif
+
 // ============================================================================
-// Expression Template Base Classes (simplified)
+// Helper Functions for Value Extraction
 // ============================================================================
 
-// We'll remove the problematic cast function and just use direct eval calls
+namespace __detail {
+
+// These wrappers allow the templates below to expressions or values
+// interchangably.
+// Extract Value from templated expression types
+template <typename T>
+typename T::ResultType getValue(T value)
+{
+    return value.eval();
+}
+
+
+// Extract Value from Value (identity)
+template<typename T>
+Value<T> getValue(Value<T> d)
+{
+    return d;
+}
+} // namespace __detail
+
 
 // ============================================================================
 // Binary Operation Expression Templates
@@ -116,12 +163,12 @@ struct AddExpr
     using ResultType = Value<T>;
     L left;
     R right;
-    
+
     Value<T> eval()
     {
-        Value<T> l_val = getValue(left);
-        Value<T> r_val = getValue(right);
-        return Value<T>::Create(l_val.value + r_val.value, 
+        Value<T> l_val = __detail::getValue(left);
+        Value<T> r_val = __detail::getValue(right);
+        return Value<T>::Create(l_val.value + r_val.value,
                    l_val.derivative + r_val.derivative);
     }
 };
@@ -133,12 +180,12 @@ struct SubExpr
     using ResultType = Value<T>;
     L left;
     R right;
-    
+
     Value<T> eval()
     {
-        Value<T> l_val = getValue(left);
-        Value<T> r_val = getValue(right);
-        return Value<T>::Create(l_val.value - r_val.value, 
+        Value<T> l_val = __detail::getValue(left);
+        Value<T> r_val = __detail::getValue(right);
+        return Value<T>::Create(l_val.value - r_val.value,
                    l_val.derivative - r_val.derivative);
     }
 };
@@ -150,11 +197,11 @@ struct MulExpr
     using ResultType = Value<T>;
     L left;
     R right;
-    
+
     Value<T> eval()
     {
-        Value<T> l_val = getValue(left);
-        Value<T> r_val = getValue(right);
+        Value<T> l_val = __detail::getValue(left);
+        Value<T> r_val = __detail::getValue(right);
         // Product rule: (f*g)' = f'*g + f*g'
         return Value<T>::Create(l_val.value * r_val.value,
                    l_val.derivative * r_val.value + l_val.value * r_val.derivative);
@@ -168,11 +215,11 @@ struct DivExpr
     using ResultType = Value<T>;
     L left;
     R right;
-    
+
     Value<T> eval()
     {
-        Value<T> l_val = getValue(left);
-        Value<T> r_val = getValue(right);
+        Value<T> l_val = __detail::getValue(left);
+        Value<T> r_val = __detail::getValue(right);
         // Quotient rule: (f/g)' = (f'*g - f*g') / g^2
         T denom = r_val.value * r_val.value;
         return Value<T>::Create(l_val.value / r_val.value,
@@ -187,14 +234,14 @@ struct PowExpr
     using ResultType = Value<T>;
     L base;
     R exponent;
-    
+
     Value<T> eval()
     {
-        Value<T> b_val = getValue(base);
-        Value<T> e_val = getValue(exponent);
+        Value<T> b_val = __detail::getValue(base);
+        Value<T> e_val = __detail::getValue(exponent);
         // Power rule: (f^g)' = f^g * (g' * ln(f) + g * f'/f)
         T pow_val = pow(b_val.value, e_val.value);
-        T deriv = pow_val * (e_val.derivative * log(b_val.value) + 
+        T deriv = pow_val * (e_val.derivative * log(b_val.value) +
                             e_val.value * b_val.derivative / b_val.value);
         return Value<T>::Create(pow_val, deriv);
     }
@@ -210,10 +257,10 @@ struct NegExpr
 {
     using ResultType = Value<T>;
     E expr;
-    
+
     Value<T> eval()
     {
-        Value<T> val = getValue(expr);
+        Value<T> val = __detail::getValue(expr);
         return Value<T>::Create(-val.value, -val.derivative);
     }
 };
@@ -224,10 +271,10 @@ struct SinExpr
 {
     using ResultType = Value<T>;
     E expr;
-    
+
     Value<T> eval()
     {
-        Value<T> val = getValue(expr);
+        Value<T> val = __detail::getValue(expr);
         // d/dx[sin(x)] = cos(x) * x'
         return Value<T>::Create(sin(val.value), cos(val.value) * val.derivative);
     }
@@ -239,10 +286,10 @@ struct CosExpr
 {
     using ResultType = Value<T>;
     E expr;
-    
+
     Value<T> eval()
     {
-        Value<T> val = getValue(expr);
+        Value<T> val = __detail::getValue(expr);
         // d/dx[cos(x)] = -sin(x) * x'
         return Value<T>::Create(cos(val.value), -sin(val.value) * val.derivative);
     }
@@ -254,10 +301,10 @@ struct ExpExpr
 {
     using ResultType = Value<T>;
     E expr;
-    
+
     Value<T> eval()
     {
-        Value<T> val = getValue(expr);
+        Value<T> val = __detail::getValue(expr);
         // d/dx[exp(x)] = exp(x) * x'
         T exp_val = exp(val.value);
         return Value<T>::Create(exp_val, exp_val * val.derivative);
@@ -270,10 +317,10 @@ struct LogExpr
 {
     using ResultType = Value<T>;
     E expr;
-    
+
     Value<T> eval()
     {
-        Value<T> val = getValue(expr);
+        Value<T> val = __detail::getValue(expr);
         // d/dx[log(x)] = x' / x
         return Value<T>::Create(log(val.value), val.derivative / val.value);
     }
@@ -285,34 +332,15 @@ struct SqrtExpr
 {
     using ResultType = Value<T>;
     E expr;
-    
+
     Value<T> eval()
     {
-        Value<T> val = getValue(expr);
+        Value<T> val = __detail::getValue(expr);
         // d/dx[sqrt(x)] = x' / (2 * sqrt(x))
         T sqrt_val = sqrt(val.value);
         return Value<T>::Create(sqrt_val, val.derivative / ((T)2 * sqrt_val));
     }
 };
-
-// ============================================================================
-// Helper Functions for Value Extraction
-// ============================================================================
-
-// Extract Value from templated expression types
-template <typename T>
-typename T::ResultType getValue(T value)
-{
-    return value.eval();
-}
-
-
-// Extract Value from Value (identity)
-template<typename T>
-Value<T> getValue(Value<T> d)
-{
-    return d;
-}
 
 // Helper functions to create templated expression templates - using macros to reduce duplication
 
@@ -372,11 +400,25 @@ MAKE_BINARY_OP(add, AddExpr)
 MAKE_BINARY_OP(subtract, SubExpr)
 MAKE_BINARY_OP(multiply, MulExpr)
 MAKE_BINARY_OP(divide, DivExpr)
+MAKE_BINARY_OP(power, PowExpr)
 
-template<typename T, typename L, typename R>
-PowExpr<T, L, R> power(L base, R exponent)
+template<typename T>
+Value<T> pow(Value<T> base, Value<T> exponent)
 {
-    return makePowExpr<T>(base, exponent);
+    return power<T>(base, exponent).eval();
+}
+
+template<typename T, typename E>
+typename hlsl::enable_if<hlsl::is_arithmetic<E>::value, Value<T> >::type
+pow(Value<T> base, E exponent)
+{
+    return power<T>(base, exponent).eval();
+}
+
+template<typename T, typename E>
+typename hlsl::enable_if<hlsl::is_arithmetic<E>::value, Value<T> >::type pow(E base, Value<T> exponent)
+{
+    return power<T>(base, exponent).eval();
 }
 
 #define MAKE_UNARY_OP(opName, ExprType) \
@@ -412,7 +454,7 @@ Value<T> variable(T value)
     return Value<T>::Create(value, (T)1);
 }
 
-// Scalar constant function  
+// Scalar constant function
 template<typename T>
 Value<T> constant(T value)
 {
@@ -420,7 +462,7 @@ Value<T> constant(T value)
 }
 
 // ============================================================================
-// Matrix and Vector Value Number Support  
+// Matrix and Vector Value Number Support
 // ============================================================================
 
 // Vector Value initialization functions using splat casting
@@ -461,16 +503,16 @@ struct DotExpr
     using ResultType = Value<T>;
     L left;
     R right;
-    
+
     Value<T> eval()
     {
-        Value<vector<T, N> > l_val = getValue(left);
-        Value<vector<T, N> > r_val = getValue(right);
-        
+        Value<vector<T, N> > l_val = __detail::getValue(left);
+        Value<vector<T, N> > r_val = __detail::getValue(right);
+
         // Dot product: d/dx[dot(u,v)] = dot(u',v) + dot(u,v')
         T val = dot(l_val.value, r_val.value);
         T deriv = dot(l_val.derivative, r_val.value) + dot(l_val.value, r_val.derivative);
-        
+
         return Value<T>::Create(val, deriv);
     }
 };
@@ -482,16 +524,16 @@ struct CrossExpr
     using ResultType = Value<vector<T, 3> >;
     L left;
     R right;
-    
+
     Value<vector<T, 3> > eval()
     {
-        Value<vector<T, 3> > l_val = getValue(left);
-        Value<vector<T, 3> > r_val = getValue(right);
-        
+        Value<vector<T, 3> > l_val = __detail::getValue(left);
+        Value<vector<T, 3> > r_val = __detail::getValue(right);
+
         // Cross product: d/dx[cross(u,v)] = cross(u',v) + cross(u,v')
         vector<T, 3> val = cross(l_val.value, r_val.value);
         vector<T, 3> deriv = cross(l_val.derivative, r_val.value) + cross(l_val.value, r_val.derivative);
-        
+
         return Value<vector<T, 3> >::Create(val, deriv);
     }
 };
@@ -502,15 +544,15 @@ struct LengthExpr
 {
     using ResultType = Value<T>;
     E expr;
-    
+
     Value<T> eval()
     {
-        Value<vector<T, N> > val = getValue(expr);
-        
+        Value<vector<T, N> > val = __detail::getValue(expr);
+
         // Length: d/dx[|v|] = dot(v, v') / |v|
         T len = length(val.value);
         T deriv = dot(val.value, val.derivative) / len;
-        
+
         return Value<T>::Create(len, deriv);
     }
 };
@@ -521,17 +563,17 @@ struct NormalizeExpr
 {
     using ResultType = Value<vector<T, N> >;
     E expr;
-    
+
     Value<vector<T, N> > eval()
     {
-        Value<vector<T, N> > val = getValue(expr);
-        
+        Value<vector<T, N> > val = __detail::getValue(expr);
+
         // Normalize: d/dx[normalize(v)] = (v' * |v| - v * (dot(v,v') / |v|)) / |v|²
         T len = length(val.value);
         vector<T, N> norm_val = normalize(val.value);
         T dot_deriv = dot(val.value, val.derivative);
         vector<T, N> deriv = (val.derivative * len - val.value * (dot_deriv / len)) / (len * len);
-        
+
         return Value<vector<T, N> >::Create(norm_val, deriv);
     }
 };
@@ -547,18 +589,18 @@ struct MatMulExpr
     using ResultType = Value<vector<T, N> >;
     L left;   // Matrix NxK
     R right;  // Matrix KxM or Vector K
-    
+
     // Returns either Value<matrix<T,N,M> > for matrix*matrix or Value<vector<T,N> > for matrix*vector
     // We'll use a specific implementation that works with common cases
     Value<vector<T, N> > eval()  // Assuming matrix-vector multiplication for now
     {
-        Value<matrix<T, N, K> > l_val = getValue(left);
-        Value<vector<T, K> > r_val = getValue(right);
-        
+        Value<matrix<T, N, K> > l_val = __detail::getValue(left);
+        Value<vector<T, K> > r_val = __detail::getValue(right);
+
         // Matrix-vector multiplication: d/dx[A*v] = A'*v + A*v'
         vector<T, N> val = mul(l_val.value, r_val.value);
         vector<T, N> deriv = mul(l_val.derivative, r_val.value) + mul(l_val.value, r_val.derivative);
-        
+
         return Value<vector<T, N> >::Create(val, deriv);
     }
 };
@@ -569,15 +611,15 @@ struct TransposeExpr
 {
     using ResultType = Value<matrix<T, M, N> >;
     E expr;
-    
+
     Value<matrix<T, M, N> > eval()  // Transpose flips dimensions
     {
-        Value<matrix<T, N, M> > val = getValue(expr);
-        
+        Value<matrix<T, N, M> > val = __detail::getValue(expr);
+
         // Transpose: d/dx[transpose(M)] = transpose(M')
         matrix<T, M, N> val_t = transpose(val.value);
         matrix<T, M, N> deriv_t = transpose(val.derivative);
-        
+
         return Value<matrix<T, M, N> >::Create(val_t, deriv_t);
     }
 };
@@ -588,22 +630,22 @@ struct DetExpr
 {
     using ResultType = Value<T>;
     E expr;
-    
+
     Value<T> eval()
     {
-        Value<matrix<T, N, N> > val = getValue(expr);
-        
+        Value<matrix<T, N, N> > val = __detail::getValue(expr);
+
         // Determinant: d/dx[det(M)] = det(M) * tr(M^-1 * M')
         // For simplicity, we'll use the fact that d/dx[det(M)] = det(M) * tr(adj(M)^T * M') / det(M) = tr(adj(M)^T * M')
         T det_val = determinant(val.value);
-        
+
         // This is a simplified derivative - full implementation would need adjugate matrix
         // For 2x2: det([[a,b],[c,d]]) = ad - bc
         // d_det = a'*d + a*d' - b'*c - b*c' (only valid for 2x2)
         T deriv;
         if (N == 2)
         {
-            deriv = val.derivative[0][0] * val.value[1][1] + val.value[0][0] * val.derivative[1][1] - 
+            deriv = val.derivative[0][0] * val.value[1][1] + val.value[0][0] * val.derivative[1][1] -
                     val.derivative[0][1] * val.value[1][0] - val.value[0][1] * val.derivative[1][0];
         }
         else
@@ -611,13 +653,13 @@ struct DetExpr
             // For larger matrices, this is more complex - simplified approximation
             deriv = (T)0;
         }
-        
+
         return Value<T>::Create(det_val, deriv);
     }
 };
 
 // ============================================================================
-// Vector and Matrix getValue Specializations
+// Vector and Matrix __detail::getValue Specializations
 // ============================================================================
 
 
@@ -635,7 +677,7 @@ DotExpr<T, N, L, R> dotProduct(L left, R right)
     return result;
 }
 
-template<typename T, typename L, typename R>  
+template<typename T, typename L, typename R>
 CrossExpr<T, L, R> crossProduct(L left, R right)
 {
     CrossExpr<T, L, R> result;
@@ -657,7 +699,7 @@ ExprType<T, N, E> OpName(E expr) \
 MAKE_VECTOR_UNARY_OP(lengthExpr, LengthExpr)
 MAKE_VECTOR_UNARY_OP(normalizeExpr, NormalizeExpr)
 
-// Matrix operations 
+// Matrix operations
 template<typename T, int N, int K, int M, typename L, typename R>
 MatMulExpr<T, N, K, M, L, R> matMul(L left, R right)
 {
@@ -688,7 +730,7 @@ DetExpr<T, N, E> determinantExpr(E expr)
 // Component-wise Vector Operations
 // ============================================================================
 
-// Component access for vectors (returns scalar Value) 
+// Component access for vectors (returns scalar Value)
 template<typename T, int N>
 Value<T> getComponent(Value<vector<T, N> > vec, int index)
 {
@@ -712,21 +754,21 @@ MAKE_COMPONENT_ACCESSOR(W, 3)
 template<typename T>
 Value<vector<T, 2> > makeVector(Value<T> x, Value<T> y)
 {
-    return Value<vector<T, 2> >::Create(vector<T, 2>(x.value, y.value), 
+    return Value<vector<T, 2> >::Create(vector<T, 2>(x.value, y.value),
                                  vector<T, 2>(x.derivative, y.derivative));
 }
 
 template<typename T>
 Value<vector<T, 3> > makeVector(Value<T> x, Value<T> y, Value<T> z)
 {
-    return Value<vector<T, 3> >::Create(vector<T, 3>(x.value, y.value, z.value), 
+    return Value<vector<T, 3> >::Create(vector<T, 3>(x.value, y.value, z.value),
                                  vector<T, 3>(x.derivative, y.derivative, z.derivative));
 }
 
 template<typename T>
 Value<vector<T, 4> > makeVector(Value<T> x, Value<T> y, Value<T> z, Value<T> w)
 {
-    return Value<vector<T, 4> >::Create(vector<T, 4>(x.value, y.value, z.value, w.value), 
+    return Value<vector<T, 4> >::Create(vector<T, 4>(x.value, y.value, z.value, w.value),
                                  vector<T, 4>(x.derivative, y.derivative, z.derivative, w.derivative));
 }
 
