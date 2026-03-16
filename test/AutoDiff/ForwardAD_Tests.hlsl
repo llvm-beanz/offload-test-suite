@@ -144,7 +144,7 @@ Value<float> TestVectorDotProduct(float input_x, float scalar, vector<float, 2> 
 {
     Value<float> x = variable<float>(input_x);
     Value<vector<float, 2> > v = makeVector<float>(x, x * scalar);
-    Value<vector<float, 2> > u_val = constantVector<float, 2>(u);
+    Value<vector<float, 2> > u_val = constant<float2>(u);
     Value<float> f = dot(v, u_val);
     return f;
 }
@@ -180,7 +180,7 @@ Value<vector<float, 2> > TestMatrixMultiplication(float input_x, vector<float, 2
     matrix<float, 2, 2> mat_deriv = matrix<float, 2, 2>(x.derivative, 0, 0, 0);
     Value<matrix<float, 2, 2> > A = Value<matrix<float, 2, 2> >::Create(mat_val, mat_deriv);
 
-    Value<vector<float, 2> > v = constantVector<float, 2>(v_const);
+    Value<vector<float, 2> > v = constant<float2>(v_const);
     Value<vector<float, 2> > f = matMul<float, 2, 2, 2>(A, v).eval();
     return f;
 }

@@ -439,37 +439,6 @@ Value<T> constant(T value)
 }
 
 // ============================================================================
-// Matrix and Vector Value Number Support
-// ============================================================================
-
-// Vector Value initialization functions using splat casting
-template<typename T, int N>
-Value<vector<T, N> > variable(vector<T, N> value)
-{
-    return Value<vector<T, N> >::Create(value, (vector<T, N>)1); // Splat 1 to all components
-}
-
-// Matrix Value initialization functions using splat casting
-template<typename T, int N, int M>
-Value<matrix<T, N, M> > variable(matrix<T, N, M> value)
-{
-    return Value<matrix<T, N, M> >::Create(value, (matrix<T, N, M>)1); // Splat 1 to all components
-}
-
-// Specialized constant functions for vector and matrix types
-template<typename T, int N>
-Value<vector<T, N> > constantVector(vector<T, N> value)
-{
-    return Value<vector<T, N> >::Create(value, (vector<T, N>)0); // Splat 0 to all components
-}
-
-template<typename T, int N, int M>
-Value<matrix<T, N, M> > constantMatrix(matrix<T, N, M> value)
-{
-    return Value<matrix<T, N, M> >::Create(value, (matrix<T, N, M>)0); // Splat 0 to all components
-}
-
-// ============================================================================
 // Vector Operations
 // ============================================================================
 

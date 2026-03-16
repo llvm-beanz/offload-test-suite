@@ -226,7 +226,7 @@ void ExampleVectorOperations()
     Value<vector<float, 2> > v = makeVector<float>(x, y);
 
     // Create a constant vector [3, 4]
-    Value<vector<float, 2> > u = constantVector<float, 2>(vector<float, 2>(3.0f, 4.0f));
+    Value<vector<float, 2> > u = constant<float2>(vector<float, 2>(3.0f, 4.0f));
 
     // Compute dot product: f(x,y) = dot([x,y], [3,4]) = 3x + 4y
     // ∂f/∂x = 3, ∂f/∂y = 4 (but we're computing w.r.t. x with dx=1, dy=0)
@@ -272,12 +272,12 @@ void ExampleMatrixVector()
     Value<float> t = variable<float>(1.5f);
 
     // Create parameterized matrix [[t, 0], [0, 2t]]
-    matrix<float, 2, 2> mat_val = matrix<float, 2, 2>(t.value, 0, 0, 2*t.value);
-    matrix<float, 2, 2> mat_deriv = matrix<float, 2, 2>(t.derivative, 0, 0, 2*t.derivative);
-    Value<matrix<float, 2, 2> > A = Value<matrix<float, 2, 2> >::Create(mat_val, mat_deriv);
+    float2x2 mat_val = float2x2(t.value, 0, 0, 2*t.value);
+    float2x2 mat_deriv = float2x2(t.derivative, 0, 0, 2*t.derivative);
+    Value<float2x2 > A = Value<float2x2 >::Create(mat_val, mat_deriv);
 
     // Create vector [1, 3]
-    Value<vector<float, 2> > v = constantVector<float, 2>(vector<float, 2>(1.0f, 3.0f));
+    Value<vector<float, 2> > v = constant<float2>(vector<float, 2>(1.0f, 3.0f));
 
     // Compute A*v = [[t,0],[0,2t]] * [1,3] = [t, 6t]
     Value<vector<float, 2> > result = matMul<float, 2, 2, 2>(A, v).eval();
@@ -295,9 +295,9 @@ void ExampleMatrixDeterminant()
     Value<float> b = constant<float>(3.0f);
 
     // Create matrix [[a, 1], [b, 4]] = [[a, 1], [3, 4]]
-    matrix<float, 2, 2> mat_val = matrix<float, 2, 2>(a.value, 1, b.value, 4);
-    matrix<float, 2, 2> mat_deriv = matrix<float, 2, 2>(a.derivative, 0, b.derivative, 0);
-    Value<matrix<float, 2, 2> > M = Value<matrix<float, 2, 2> >::Create(mat_val, mat_deriv);
+    float2x2 mat_val = float2x2(a.value, 1, b.value, 4);
+    float2x2 mat_deriv = float2x2(a.derivative, 0, b.derivative, 0);
+    Value<float2x2 > M = Value<float2x2 >::Create(mat_val, mat_deriv);
 
     // Compute determinant: det([[a,1],[3,4]]) = a*4 - 1*3 = 4a - 3
     // d/da[4a - 3] = 4
@@ -319,14 +319,14 @@ void ExampleTransformationPipeline()
     Value<float> neg_sin = negate(sin_theta);
 
     // Rotation matrix [[cos θ, -sin θ], [sin θ, cos θ]]
-    matrix<float, 2, 2> rot_val = matrix<float, 2, 2>(cos_theta.value, neg_sin.value,
+    float2x2 rot_val = float2x2(cos_theta.value, neg_sin.value,
                                                    sin_theta.value, cos_theta.value);
-    matrix<float, 2, 2> rot_deriv = matrix<float, 2, 2>(cos_theta.derivative, neg_sin.derivative,
+    float2x2 rot_deriv = float2x2(cos_theta.derivative, neg_sin.derivative,
                                                      sin_theta.derivative, cos_theta.derivative);
-    Value<matrix<float, 2, 2> > R = Value<matrix<float, 2, 2> >::Create(rot_val, rot_deriv);
+    Value<float2x2 > R = Value<float2x2 >::Create(rot_val, rot_deriv);
 
     // Input vector to transform
-    Value<vector<float, 2> > input = constantVector<float, 2>(vector<float, 2>(1.0f, 0.0f));
+    Value<vector<float, 2> > input = constant<float2>(vector<float, 2>(1.0f, 0.0f));
 
     // Apply rotation
     Value<vector<float, 2> > rotated = matMul<float, 2, 2, 2>(R, input).eval();
