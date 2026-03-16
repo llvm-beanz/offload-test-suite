@@ -37,10 +37,10 @@ void ExampleTrigonometric()
     Value<float> x = variable<float>(1.0f); // x = 1.0
 
     // Define the function: f(x) = sin(x) * cos(x) + exp(x)
-    Value<float> sin_x = sinExpr<float>(x).eval();
-    Value<float> cos_x = cosExpr<float>(x).eval();
+    Value<float> sin_x = sin(x);
+    Value<float> cos_x = cos(x);
     Value<float> sin_cos = sin_x * cos_x;
-    Value<float> exp_x = expExpr<float>(x).eval();
+    Value<float> exp_x = exp(x);
     Value<float> f = sin_cos + exp_x;
 
     // At x = 1.0:
@@ -64,7 +64,7 @@ void ExampleDirectValue()
 #if __hlsl_dx_compiler
     // Unary operators are broken in DXC.
     // https://github.com/microsoft/DirectXShaderCompiler/issues/7944
-    Value<float> negated = negateExpr<float>(x).eval();
+    Value<float> negated = negate(x);
 #else
     Value<float> negated = -x;
 #endif
@@ -83,10 +83,10 @@ void ExampleComposite()
     // Define the function: f(x) = sqrt(x^2 + 1) * log(x + 2)
     Value<float> x_squared = x * x;
     Value<float> x_sq_plus_1 = x_squared + 1.0f;
-    Value<float> sqrt_part = sqrtExpr<float>(x_sq_plus_1).eval();
+    Value<float> sqrt_part = sqrt(x_sq_plus_1);
 
     Value<float> x_plus_2 = x + 2.0f;
-    Value<float> log_part = logExpr<float>(x_plus_2).eval();
+    Value<float> log_part = log(x_plus_2);
 
     Value<float> f = sqrt_part * log_part;
 
@@ -104,7 +104,7 @@ void ExamplePartialX()
     Value<float> y = Value<float>::Create(3.0f, 0.0f); // y = 3, dy = 0
 
     Value<float> xy = x * y;
-    Value<float> sin_x = sinExpr<float>(x).eval();
+    Value<float> sin_x = sin(x);
     Value<float> f = xy + sin_x;;
 
     // ∂f/∂x = y + cos(x) = 3 + cos(2) ≈ 3 - 0.416 = 2.584
@@ -137,7 +137,7 @@ LightingResult ComputeLightingWithGradient(float3 position, float3 light_pos)
     Value<float> dy_sq = dy * dy;
     Value<float> dz_sq = dz * dz;
     Value<float> dist_sq = dx_sq + dy_sq + dz_sq;
-    Value<float> distance = sqrtExpr<float>(dist_sq).eval();
+    Value<float> distance = sqrt(dist_sq);
 
     // Inverse square law with some artistic falloff
     Value<float> dist_sq_plus_1 = distance * distance + 1.0f;
@@ -165,13 +165,13 @@ void ExampleDeferredEvaluation()
 
     // Build complex expression step by step
     Value<float> x_squared = x * x;
-    Value<float> sin_x_sq = sinExpr<float>(x_squared).eval();
+    Value<float> sin_x_sq = sin(x_squared);
 
-    Value<float> exp_x = expExpr<float>(x).eval();
-    Value<float> cos_exp_x = cosExpr<float>(exp_x).eval();
+    Value<float> exp_x = exp(x);
+    Value<float> cos_exp_x = cos(exp_x);
 
     Value<float> x_plus_1 = x + Value<float>::Create(1.0f, 0.0f);
-    Value<float> log_x_plus_1 = logExpr<float>(x_plus_1).eval();
+    Value<float> log_x_plus_1 = log(x_plus_1);
 
     Value<float> cos_exp_log = cos_exp_x * log_x_plus_1;
     Value<float> complex_expr = sin_x_sq + cos_exp_log;
@@ -314,9 +314,9 @@ void ExampleTransformationPipeline()
     Value<float> theta = variable<float>(0.785f); // π/4 radians
 
     // Create 2D rotation matrix
-    Value<float> cos_theta = cosExpr<float>(theta).eval();
-    Value<float> sin_theta = sinExpr<float>(theta).eval();
-    Value<float> neg_sin = negateExpr<float>(sin_theta).eval();
+    Value<float> cos_theta = cos(theta);
+    Value<float> sin_theta = sin(theta);
+    Value<float> neg_sin = negate(sin_theta);
 
     // Rotation matrix [[cos θ, -sin θ], [sin θ, cos θ]]
     matrix<float, 2, 2> rot_val = matrix<float, 2, 2>(cos_theta.value, neg_sin.value,

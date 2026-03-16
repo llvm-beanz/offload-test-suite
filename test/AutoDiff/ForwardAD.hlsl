@@ -395,10 +395,23 @@ ExprType<T, E> make##ExprType(E expr) \
     result.expr = expr; \
     return result; \
 } \
+namespace __detail { \
 template<typename T, typename E> \
-ExprType<T, E> opName##Expr(E expr) \
+ExprType<T, E> opName(E expr) \
 { \
     return make##ExprType<T>(expr); \
+} \
+} /* namespace __detail */ \
+template<typename T> \
+Value<T> opName(Value<T> arg) \
+{ \
+    return __detail::opName<T>(arg).eval(); \
+} \
+template<typename T, typename E> \
+typename hlsl::enable_if<hlsl::is_arithmetic<T>::value, Value<T> >::type \
+opName(T arg) \
+{ \
+    return __detail::opName<T>(arg).eval(); \
 }
 
 MAKE_UNARY_OP(negate, NegExpr)

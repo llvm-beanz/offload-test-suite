@@ -71,7 +71,7 @@ Value<float> TestQuadratic(float input_x)
 Value<float> TestTrigonometric(float input_x)
 {
     Value<float> x = variable<float>(input_x);
-    Value<float> f = sinExpr<float>(x).eval();
+    Value<float> f = sin(x);
     return f;
 }
 
@@ -79,7 +79,7 @@ Value<float> TestTrigonometric(float input_x)
 Value<float> TestExponential(float input_x)
 {
     Value<float> x = variable<float>(input_x);
-    Value<float> f = expExpr<float>(x).eval();
+    Value<float> f = exp(x);
     return f;
 }
 
@@ -87,7 +87,7 @@ Value<float> TestExponential(float input_x)
 Value<float> TestLogarithm(float input_x)
 {
     Value<float> x = variable<float>(input_x);
-    Value<float> f = logExpr<float>(x).eval();
+    Value<float> f = log(x);
     return f;
 }
 
@@ -95,7 +95,7 @@ Value<float> TestLogarithm(float input_x)
 Value<float> TestChainRule(float input_x)
 {
     Value<float> x = variable<float>(input_x);
-    Value<float> f = sinExpr<float>(x * 2.0f).eval();
+    Value<float> f = sin(x * 2.0f);
     return f;
 }
 
@@ -103,7 +103,7 @@ Value<float> TestChainRule(float input_x)
 Value<float> TestProductRule(float input_x)
 {
     Value<float> x = variable<float>(input_x);
-    Value<float> f = x * sinExpr<float>(x).eval();
+    Value<float> f = x * sin(x);
     return f;
 }
 
@@ -128,7 +128,7 @@ Value<float> TestPowerRule(float input_x, float exponent)
 Value<float> TestComplexExpression(float input_x)
 {
     Value<float> x = variable<float>(input_x);
-    Value<float> exp_sin = expExpr<float>(x).eval() * sinExpr<float>(x).eval();
+    Value<float> exp_sin = exp(x) * sin(x);
     Value<float> x_squared = x * x;
     Value<float> f = exp_sin + x_squared;
     return f;
