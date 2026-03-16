@@ -155,7 +155,7 @@ Value<float> TestVectorLength(float input_x, float constant_component)
 {
     Value<float> x = variable<float>(input_x);
     Value<vector<float, 2> > v = makeVector<float>(x, constant<float>(constant_component));
-    Value<float> f = lengthExpr<float2>(v).eval();
+    Value<float> f = length(v);
     return f;
 }
 
@@ -165,7 +165,7 @@ Value<vector<float, 2> > TestVectorNormalize(float input_x)
 {
     Value<float> x = variable<float>(input_x);
     Value<vector<float, 2> > v = makeVector<float>(x, x);
-    Value<vector<float, 2> > f = normalizeExpr<float2>(v).eval();
+    Value<vector<float, 2> > f = normalize(v);
     return f;
 }
 

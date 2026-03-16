@@ -234,10 +234,10 @@ void ExampleVectorOperations()
 
     // Compute vector length: |[x,y]| = sqrt(x^2 + y^2)
     // d/dx[sqrt(x^2 + y^2)] = x/sqrt(x^2 + y^2)
-    Value<float> length_result = lengthExpr<float2>(v).eval();
+    Value<float> length_result = length(v);
 
     // Normalize vector
-    Value<vector<float, 2> > normalized = normalizeExpr<float2>(v).eval();
+    Value<vector<float, 2> > normalized = normalize(v);
 
     float dot_val = dot_result.value;         // 3*1 + 4*2 = 11
     float dot_deriv = dot_result.derivative;  // 3 (derivative w.r.t. x)
@@ -331,7 +331,7 @@ void ExampleTransformationPipeline()
     // Apply rotation
     Value<vector<float, 2> > rotated = matMul<float, 2, 2, 2>(R, input).eval();
     // Compute length (should remain 1 for rotation)
-    Value<float> length_after = lengthExpr<float2>(rotated).eval();
+    Value<float> length_after = length(rotated);
 
     // The gradient tells us how the transformed point moves with rotation angle
     Value<float> x_component = getX(rotated);

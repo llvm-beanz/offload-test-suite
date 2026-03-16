@@ -685,17 +685,35 @@ MAKE_VECTOR_BINARY_OP(dot, DotExpr)
 MAKE_VECTOR_BINARY_OP(cross, CrossExpr)
 
 // Generic unary vector expression factory
-#define MAKE_VECTOR_UNARY_OP(OpName, ExprType) \
+#define MAKE_VECTOR_UNARY_OP(opName, ExprType) \
 template<typename T, typename E> \
-ExprType<T, E> OpName(E expr) \
+ExprType<T, E> make##ExprType(E expr) \
 { \
     ExprType<T, E> result; \
     result.expr = expr; \
     return result; \
+} \
+namespace __detail { \
+template<typename T, typename E> \
+ExprType<T, E> opName(E arg) \
+{ \
+    return make##ExprType<T>(arg); \
+} \
+} /* namespace __detail */ \
+template<typename T> \
+typename hlsl::enable_if<hlsl::is_vector<T>::value, typename ExprType<T, Value<T> >::ResultType>::type opName(Value<T> arg) \
+{ \
+    return __detail::opName<T>(arg).eval(); \
+} \
+template<typename T> \
+typename hlsl::enable_if<hlsl::is_vector<T>::value, typename ExprType<T, T>::ResultType>::type \
+pName(T arg) \
+{ \
+    return __detail::opName<T>(arg).eval(); \
 }
 
-MAKE_VECTOR_UNARY_OP(lengthExpr, LengthExpr)
-MAKE_VECTOR_UNARY_OP(normalizeExpr, NormalizeExpr)
+MAKE_VECTOR_UNARY_OP(length, LengthExpr)
+MAKE_VECTOR_UNARY_OP(normalize, NormalizeExpr)
 
 // Matrix operations
 template<typename T, int N, int K, int M, typename L, typename R>
