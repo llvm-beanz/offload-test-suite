@@ -197,11 +197,13 @@ if config.offloadtest_test_clang:
                 "%dxc_target", FindTool("clang-dxc"), extra_args=ExtraCompilerArgs
             )
         )
+    tools.append(ToolSubst("%dxc", FindTool("clang-dxc")))
     HLSLCompiler = "Clang"
 else:
     tools.append(
         ToolSubst("%dxc_target", config.offloadtest_dxc, extra_args=ExtraCompilerArgs)
     )
+    tools.append(ToolSubst("%dxc", config.offloadtest_dxc))
     HLSLCompiler = "DXC"
 
 config.available_features.add(HLSLCompiler)

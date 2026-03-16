@@ -580,6 +580,6 @@ Results:
 
 ...
 
-# RUN: %dxc_target -T lib_6_6 %S/BackwardAD_Examples.hlsl
+# RUN: %dxc -T lib_6_6 %S/BackwardAD_Examples.hlsl
 # RUN: %dxc_target -T cs_6_6 -E RunAllBackwardTests -Fo %t.o %S/BackwardAD_Tests.hlsl
 # RUN: %offloader %s %t.o
