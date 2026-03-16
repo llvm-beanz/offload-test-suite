@@ -1,0 +1,584 @@
+---
+Shaders:
+  - Stage: Compute
+    Entry: RunAllBackwardTests
+    DispatchSize: [8, 1, 1]
+
+Buffers:
+  # Input buffer containing test parameters for 8 threads
+  - Name: InputBuffer
+    Format: Float32
+    Stride: 172  # BackADTestInputs struct size: 43 floats = 172 bytes
+    Data: [
+      # Thread 0: Basic values
+      3.0,   # quadratic_x
+      0.0,   # sine_x
+      0.0,   # exponential_x
+      1.0,   # logarithm_x
+      0.0,   # chain_rule_x
+      0.0,   # product_rule_x
+      2.0,   # addition_x
+      3.0,   # addition_y
+      4.0,   # multiplication_x
+      5.0,   # multiplication_y
+      8.0,   # division_x
+      2.0,   # division_y
+      3.0,   # complex_x
+      2.0,   # complex_y
+      1.0,   # vector_dot_ux
+      2.0,   # vector_dot_uy
+      3.0,   # vector_dot_vx
+      4.0,   # vector_dot_vy
+      3.0,   # vector_length_vx
+      4.0,   # vector_length_vy
+      2.0,   # matrix_det_a
+      1.0,   # matrix_det_b
+      3.0,   # matrix_det_c
+      4.0,   # matrix_det_d
+      2.0,   # power_base
+      3.0,   # power_exponent
+      5.0,   # negate_x
+      0.0,   # cosine_x
+      4.0,   # sqrt_x
+      3.0,   # normalize_vx
+      4.0,   # normalize_vy
+      1.0,   # cross_ux
+      0.0,   # cross_uy
+      0.0,   # cross_uz
+      0.0,   # cross_vx
+      1.0,   # cross_vy
+      0.0,   # cross_vz
+      2.0,   # matvec_m00
+      1.0,   # matvec_m01
+      0.0,   # matvec_m10
+      3.0,   # matvec_m11
+      1.0,   # matvec_vx
+      2.0,   # matvec_vy
+
+      # Thread 1: Positive values
+      1.0,   # quadratic_x
+      0.5,   # sine_x
+      0.5,   # exponential_x
+      2.0,   # logarithm_x
+      0.5,   # chain_rule_x
+      0.5,   # product_rule_x
+      1.0,   # addition_x
+      4.0,   # addition_y
+      3.0,   # multiplication_x
+      7.0,   # multiplication_y
+      6.0,   # division_x
+      3.0,   # division_y
+      5.0,   # complex_x
+      3.0,   # complex_y
+      2.0,   # vector_dot_ux
+      1.0,   # vector_dot_uy
+      1.0,   # vector_dot_vx
+      3.0,   # vector_dot_vy
+      5.0,   # vector_length_vx
+      12.0,  # vector_length_vy
+      1.0,   # matrix_det_a
+      3.0,   # matrix_det_b
+      1.0,   # matrix_det_c
+      4.0,   # matrix_det_d
+      3.0,   # power_base
+      2.0,   # power_exponent
+      3.0,   # negate_x
+      0.5,   # cosine_x
+      9.0,   # sqrt_x
+      1.0,   # normalize_vx
+      1.0,   # normalize_vy
+      1.0,   # cross_ux
+      2.0,   # cross_uy
+      3.0,   # cross_uz
+      4.0,   # cross_vx
+      5.0,   # cross_vy
+      6.0,   # cross_vz
+      3.0,   # matvec_m00
+      1.0,   # matvec_m01
+      2.0,   # matvec_m10
+      4.0,   # matvec_m11
+      2.0,   # matvec_vx
+      3.0,   # matvec_vy
+
+      # Thread 2: Trigonometric angles
+      2.0,          # quadratic_x
+      1.570796327,  # sine_x (pi/2)
+      1.0,          # exponential_x
+      0.5,          # logarithm_x
+      1.0,          # chain_rule_x
+      1.0,          # product_rule_x
+      4.0,          # addition_x
+      6.0,          # addition_y
+      2.0,          # multiplication_x
+      8.0,          # multiplication_y
+      10.0,         # division_x
+      5.0,          # division_y
+      4.0,          # complex_x
+      1.0,          # complex_y
+      3.0,          # vector_dot_ux
+      1.0,          # vector_dot_uy
+      2.0,          # vector_dot_vx
+      5.0,          # vector_dot_vy
+      4.0,          # vector_length_vx
+      3.0,          # vector_length_vy
+      3.0,          # matrix_det_a
+      2.0,          # matrix_det_b
+      1.0,          # matrix_det_c
+      5.0,          # matrix_det_d
+      4.0,          # power_base
+      0.5,          # power_exponent
+      7.0,          # negate_x
+      1.570796327,  # cosine_x (pi/2)
+      16.0,         # sqrt_x
+      3.0,          # normalize_vx
+      4.0,          # normalize_vy
+      2.0,          # cross_ux
+      3.0,          # cross_uy
+      1.0,          # cross_uz
+      1.0,          # cross_vx
+      2.0,          # cross_vy
+      3.0,          # cross_vz
+      1.0,          # matvec_m00
+      2.0,          # matvec_m01
+      3.0,          # matvec_m10
+      1.0,          # matvec_m11
+      4.0,          # matvec_vx
+      1.0,          # matvec_vy
+
+      # Thread 3: Small values
+      0.5,   # quadratic_x
+      0.1,   # sine_x
+      0.1,   # exponential_x
+      0.5,   # logarithm_x
+      0.1,   # chain_rule_x
+      0.1,   # product_rule_x
+      0.5,   # addition_x
+      0.3,   # addition_y
+      0.2,   # multiplication_x
+      0.4,   # multiplication_y
+      1.0,   # division_x
+      4.0,   # division_y
+      1.0,   # complex_x
+      0.5,   # complex_y
+      0.5,   # vector_dot_ux
+      0.5,   # vector_dot_uy
+      0.5,   # vector_dot_vx
+      1.0,   # vector_dot_vy
+      0.3,   # vector_length_vx
+      0.4,   # vector_length_vy
+      1.0,   # matrix_det_a
+      2.0,   # matrix_det_b
+      3.0,   # matrix_det_c
+      1.0,   # matrix_det_d
+      0.5,   # power_base
+      4.0,   # power_exponent
+      0.25,  # negate_x
+      0.1,   # cosine_x
+      0.25,  # sqrt_x
+      0.6,   # normalize_vx
+      0.8,   # normalize_vy
+      0.0,   # cross_ux
+      1.0,   # cross_uy
+      0.0,   # cross_uz
+      0.0,   # cross_vx
+      0.0,   # cross_vy
+      1.0,   # cross_vz
+      4.0,   # matvec_m00
+      2.0,   # matvec_m01
+      1.0,   # matvec_m10
+      3.0,   # matvec_m11
+      0.5,   # matvec_vx
+      1.0,   # matvec_vy
+
+      # Thread 4: Larger values
+      5.0,   # quadratic_x
+      2.0,   # sine_x
+      2.0,   # exponential_x
+      10.0,  # logarithm_x
+      0.5,   # chain_rule_x
+      2.0,   # product_rule_x
+      10.0,  # addition_x
+      3.0,   # addition_y
+      6.0,   # multiplication_x
+      4.0,   # multiplication_y
+      15.0,  # division_x
+      3.0,   # division_y
+      7.0,   # complex_x
+      2.0,   # complex_y
+      4.0,   # vector_dot_ux
+      3.0,   # vector_dot_uy
+      1.0,   # vector_dot_vx
+      2.0,   # vector_dot_vy
+      8.0,   # vector_length_vx
+      6.0,   # vector_length_vy
+      5.0,   # matrix_det_a
+      2.0,   # matrix_det_b
+      3.0,   # matrix_det_c
+      7.0,   # matrix_det_d
+      10.0,  # power_base
+      0.5,   # power_exponent
+      4.0,   # negate_x
+      2.0,   # cosine_x
+      25.0,  # sqrt_x
+      5.0,   # normalize_vx
+      12.0,  # normalize_vy
+      3.0,   # cross_ux
+      1.0,   # cross_uy
+      4.0,   # cross_uz
+      2.0,   # cross_vx
+      0.0,   # cross_vy
+      1.0,   # cross_vz
+      5.0,   # matvec_m00
+      3.0,   # matvec_m01
+      1.0,   # matvec_m10
+      2.0,   # matvec_m11
+      3.0,   # matvec_vx
+      4.0,   # matvec_vy
+
+      # Thread 5: Mixed signs
+      -2.0,  # quadratic_x
+      -0.5,  # sine_x
+      -0.5,  # exponential_x
+      3.0,   # logarithm_x
+      -0.5,  # chain_rule_x
+      -0.5,  # product_rule_x
+      -3.0,  # addition_x
+      4.0,   # addition_y
+      -2.0,  # multiplication_x
+      5.0,   # multiplication_y
+      -6.0,  # division_x
+      3.0,   # division_y
+      -1.0,  # complex_x
+      2.0,   # complex_y
+      -1.0,  # vector_dot_ux
+      2.0,   # vector_dot_uy
+      -3.0,  # vector_dot_vx
+      1.0,   # vector_dot_vy
+      -3.0,  # vector_length_vx
+      4.0,   # vector_length_vy
+      -2.0,  # matrix_det_a
+      1.0,   # matrix_det_b
+      3.0,   # matrix_det_c
+      -1.0,  # matrix_det_d
+      2.0,   # power_base
+      3.0,   # power_exponent
+      -7.0,  # negate_x
+      -0.5,  # cosine_x
+      1.0,   # sqrt_x
+      -3.0,  # normalize_vx
+      4.0,   # normalize_vy
+      1.0,   # cross_ux
+      -2.0,  # cross_uy
+      3.0,   # cross_uz
+      4.0,   # cross_vx
+      5.0,   # cross_vy
+      -6.0,  # cross_vz
+      -1.0,  # matvec_m00
+      3.0,   # matvec_m01
+      2.0,   # matvec_m10
+      -4.0,  # matvec_m11
+      1.0,   # matvec_vx
+      -2.0,  # matvec_vy
+
+      # Thread 6: Pi-related
+      4.0,          # quadratic_x
+      3.141592654,  # sine_x (pi)
+      -1.0,         # exponential_x
+      0.1,          # logarithm_x
+      0.25,         # chain_rule_x
+      1.5,          # product_rule_x
+      6.0,          # addition_x
+      -2.0,         # addition_y
+      3.0,          # multiplication_x
+      -3.0,         # multiplication_y
+      4.0,          # division_x
+      -2.0,         # division_y
+      2.0,          # complex_x
+      -1.0,         # complex_y
+      2.0,          # vector_dot_ux
+      -1.0,         # vector_dot_uy
+      4.0,          # vector_dot_vx
+      3.0,          # vector_dot_vy
+      6.0,          # vector_length_vx
+      -3.0,         # vector_length_vy
+      2.0,          # matrix_det_a
+      1.0,          # matrix_det_b
+      3.0,          # matrix_det_c
+      4.0,          # matrix_det_d
+      2.0,          # power_base
+      3.0,          # power_exponent
+      -3.0,         # negate_x
+      3.141592654,  # cosine_x (pi)
+      100.0,        # sqrt_x
+      -1.0,         # normalize_vx
+      -1.0,         # normalize_vy
+      -1.0,         # cross_ux
+      2.0,          # cross_uy
+      -3.0,         # cross_uz
+      4.0,          # cross_vx
+      -5.0,         # cross_vy
+      6.0,          # cross_vz
+      2.0,          # matvec_m00
+      -1.0,         # matvec_m01
+      3.0,          # matvec_m10
+      5.0,          # matvec_m11
+      2.0,          # matvec_vx
+      -1.0,         # matvec_vy
+
+      # Thread 7: Edge-ish values
+      0.1,   # quadratic_x
+      0.01,  # sine_x
+      0.01,  # exponential_x
+      0.01,  # logarithm_x
+      0.01,  # chain_rule_x
+      0.01,  # product_rule_x
+      100.0, # addition_x
+      200.0, # addition_y
+      0.1,   # multiplication_x
+      0.2,   # multiplication_y
+      0.5,   # division_x
+      0.1,   # division_y
+      0.1,   # complex_x
+      0.05,  # complex_y
+      1.0,   # vector_dot_ux
+      1.0,   # vector_dot_uy
+      1.0,   # vector_dot_vx
+      1.0,   # vector_dot_vy
+      0.1,   # vector_length_vx
+      0.1,   # vector_length_vy
+      1.0,   # matrix_det_a
+      0.0,   # matrix_det_b
+      1.0,   # matrix_det_c
+      0.0,   # matrix_det_d
+      0.1,   # power_base
+      10.0,  # power_exponent
+      100.0, # negate_x
+      0.01,  # cosine_x
+      0.01,  # sqrt_x
+      1.0,   # normalize_vx
+      0.0,   # normalize_vy
+      1.0,   # cross_ux
+      0.0,   # cross_uy
+      0.0,   # cross_uz
+      0.0,   # cross_vx
+      0.0,   # cross_vy
+      1.0,   # cross_vz
+      1.0,   # matvec_m00
+      0.0,   # matvec_m01
+      0.0,   # matvec_m10
+      1.0,   # matvec_m11
+      1.0,   # matvec_vx
+      1.0,   # matvec_vy
+    ]
+
+  # Output buffer for computed results (8 threads x 20 tests)
+  - Name: ResultBuffer
+    Format: Float32
+    Stride: 8  # BackADTestResult struct: 2 floats = 8 bytes
+    FillSize: 1280  # 8 threads * 20 tests * 8 bytes = 1280 bytes
+
+  # Expected results for validation (8 threads x 20 tests each)
+  - Name: ExpectedResults
+    Format: Float32
+    Stride: 8
+    Data: [
+      # Thread 0: Basic values
+      9.0, 6.0,        # Test 0: Quadratic f(x)=x^2 -> f(3)=9, f'(3)=6
+      0.0, 1.0,        # Test 1: Sine f(x)=sin(x) -> f(0)=0, f'(0)=1
+      1.0, 1.0,        # Test 2: Exponential f(x)=exp(x) -> f(0)=1, f'(0)=1
+      0.0, 1.0,        # Test 3: Logarithm f(x)=log(x) -> f(1)=0, f'(1)=1
+      0.0, 0.0,        # Test 4: Chain Rule f(x)=sin(x^2) -> f(0)=0, f'(0)=0
+      0.0, 0.0,        # Test 5: Product Rule f(x)=x*sin(x) -> f(0)=0, f'(0)=0
+      5.0, 1.0,        # Test 6: Addition f(x,y)=x+y -> f(2,3)=5, df/dx=1
+      20.0, 5.0,       # Test 7: Multiplication f(x,y)=x*y -> f(4,5)=20, df/dx=5
+      4.0, 0.5,        # Test 8: Division f(x,y)=x/y -> f(8,2)=4, df/dx=0.5
+      1.0, 2.0,        # Test 9: Complex f(x,y)=x^2+y^2-2xy -> f(3,2)=1, df/dx=2
+      11.0, 3.0,       # Test 10: Vector Dot -> dot([1,2],[3,4])=11, df/du[0]=3
+      5.0, 0.6,        # Test 11: Vector Length -> |[3,4]|=5, df/dv[0]=0.6
+      5.0, 4.0,        # Test 12: Matrix Det -> det([[2,1],[3,4]])=5, df/dM[0][0]=4
+      8.0, 12.0,       # Test 13: Power f(x)=x^3 -> f(2)=8, f'(2)=12
+      -5.0, -1.0,      # Test 14: Negate f(x)=-x -> f(5)=-5, f'(5)=-1
+      1.0, 0.0,        # Test 15: Cosine f(x)=cos(x) -> f(0)=1, f'(0)=0
+      2.0, 0.25,       # Test 16: Sqrt f(x)=sqrt(x) -> f(4)=2, f'(4)=0.25
+      0.6, 0.928,      # Test 17: Normalize -> normalize([3,4])[0]=0.6, df/dv[0]=1-(3/5)^2=0.928
+      0.0, -1.0,       # Test 18: Cross -> cross([1,0,0],[0,1,0])[0]=0, df/du[0]=-1
+      4.0, 2.0,        # Test 19: MatVecMul -> ([[2,1],[0,3]]*[1,2])[0]=4, df/dv[0]=2
+
+      # Thread 1: Positive values
+      1.0, 2.0,                      # Test 0: Quadratic f(1)=1, f'(1)=2
+      0.479425539, 0.877582562,      # Test 1: Sine f(0.5)=sin(0.5), f'(0.5)=cos(0.5)
+      1.648721271, 1.648721271,      # Test 2: Exponential f(0.5)=e^0.5
+      0.693147181, 0.5,              # Test 3: Logarithm f(2)=ln(2), f'(2)=0.5
+      0.247403959, 0.968912422,      # Test 4: Chain Rule f(0.5)=sin(0.25), f'(0.5)
+      0.239712769, 0.918216820,      # Test 5: Product Rule f(0.5)
+      5.0, 1.0,                      # Test 6: Addition f(1,4)=5
+      21.0, 7.0,                     # Test 7: Multiplication f(3,7)=21, df/dx=7
+      2.0, 0.333333333,             # Test 8: Division f(6,3)=2, df/dx=1/3
+      4.0, 4.0,                      # Test 9: Complex f(5,3)=4, df/dx=4
+      5.0, 1.0,                      # Test 10: Vector Dot dot([2,1],[1,3])=5, df/du[0]=1
+      13.0, 0.384615385,            # Test 11: Vector Length |[5,12]|=13, df/dv[0]=5/13
+      1.0, 4.0,                      # Test 12: Matrix Det det([[1,3],[1,4]])=1, df/dM[0][0]=4
+      9.0, 6.0,                      # Test 13: Power f(3)=3^2=9, f'(3)=6
+      -3.0, -1.0,                    # Test 14: Negate f(3)=-3
+      0.877582562, -0.479425539,     # Test 15: Cosine f(0.5)=cos(0.5), f'=-sin(0.5)
+      3.0, 0.166666667,             # Test 16: Sqrt f(9)=3, f'(9)=1/6
+      0.707106781, 0.646446609,      # Test 17: Normalize normalize([1,1])[0]=1/sqrt(2), df/dv[0]=1-(1/sqrt(2))^2=0.5
+      -3.0, 1.0,                     # Test 18: Cross cross([1,2,3],[4,5,6])[0]=2*6-3*5=-3, df/du[0]=6-5=1
+      9.0, 3.0,                      # Test 19: MatVecMul ([[3,1],[2,4]]*[2,3])[0]=9, df/dv[0]=3
+
+      # Thread 2: Trigonometric angles
+      4.0, 4.0,                       # Test 0: Quadratic f(2)=4, f'(2)=4
+      1.0, 0.0,                       # Test 1: Sine f(pi/2)=1, f'(pi/2)=cos(pi/2)~0
+      2.718281828, 2.718281828,        # Test 2: Exponential f(1)=e
+      -0.693147181, 2.0,              # Test 3: Logarithm f(0.5)=ln(0.5), f'=2
+      0.841470985, 1.080604612,        # Test 4: Chain Rule f(1)=sin(1), f'(1)=2cos(1)
+      0.841470985, 1.381773291,        # Test 5: Product Rule f(1)=sin(1), f'=sin(1)+cos(1)
+      10.0, 1.0,                       # Test 6: Addition f(4,6)=10
+      16.0, 8.0,                       # Test 7: Multiplication f(2,8)=16, df/dx=8
+      2.0, 0.2,                        # Test 8: Division f(10,5)=2, df/dx=0.2
+      9.0, 6.0,                        # Test 9: Complex f(4,1)=9, df/dx=6
+      11.0, 2.0,                       # Test 10: Vector Dot dot([3,1],[2,5])=11, df/du[0]=2
+      5.0, 0.8,                        # Test 11: Vector Length |[4,3]|=5, df/dv[0]=0.8
+      13.0, 5.0,                       # Test 12: Matrix Det det([[3,2],[1,5]])=13, df/dM[0][0]=5
+      2.0, 0.25,                       # Test 13: Power f(4)=4^0.5=2, f'=0.25
+      -7.0, -1.0,                      # Test 14: Negate f(7)=-7
+      0.0, -1.0,                       # Test 15: Cosine f(pi/2)=0, f'=-sin(pi/2)=-1
+      4.0, 0.125,                      # Test 16: Sqrt f(16)=4, f'=1/8
+      0.6, 0.928,                      # Test 17: Normalize normalize([3,4])[0]=0.6, df/dv[0]=1-(3/5)^2=0.928
+      7.0, 1.0,                        # Test 18: Cross cross([2,3,1],[1,2,3])[0]=3*3-1*2=7, df/du[0]=3-2=1
+      6.0, 1.0,                        # Test 19: MatVecMul ([[1,2],[3,1]]*[4,1])[0]=6, df/dv[0]=1
+
+      # Thread 3: Small values
+      0.25, 1.0,                       # Test 0: Quadratic f(0.5)=0.25, f'=1
+      0.099833417, 0.995004165,        # Test 1: Sine f(0.1)
+      1.105170918, 1.105170918,        # Test 2: Exponential f(0.1)
+      -0.693147181, 2.0,              # Test 3: Logarithm f(0.5)
+      0.009999833, 0.199990000,        # Test 4: Chain Rule f(0.1)=sin(0.01)
+      0.009983342, 0.199333833,        # Test 5: Product Rule f(0.1)
+      0.8, 1.0,                        # Test 6: Addition f(0.5,0.3)=0.8
+      0.08, 0.4,                       # Test 7: Multiplication f(0.2,0.4)=0.08, df/dx=0.4
+      0.25, 0.25,                      # Test 8: Division f(1,4)=0.25, df/dx=0.25
+      0.25, 1.0,                       # Test 9: Complex f(1,0.5)=0.25, df/dx=1
+      0.75, 0.5,                       # Test 10: Vector Dot dot([0.5,0.5],[0.5,1])=0.75
+      0.5, 0.6,                        # Test 11: Vector Length |[0.3, 0.4]|=0.5, df/dv[0]=0.6
+      -5.0, 1.0,                       # Test 12: Matrix Det det([[1,2],[3,1]])=-5, df/dM[0][0]=1
+      0.0625, 0.5,                     # Test 13: Power f(0.5)=0.5^4=0.0625, f'=4*0.5^3=0.5
+      -0.25, -1.0,                     # Test 14: Negate f(0.25)=-0.25
+      0.995004165, -0.099833417,       # Test 15: Cosine f(0.1)=cos(0.1), f'=-sin(0.1)
+      0.5, 1.0,                        # Test 16: Sqrt f(0.25)=0.5, f'=1
+      0.6, 0.64,                       # Test 17: Normalize normalize([0.6,0.8])[0]=0.6, df/dv[0]=1-0.36=0.64
+      1.0, 1.0,                        # Test 18: Cross cross([0,1,0],[0,0,1])[0]=1*1-0*0=1, df/du[0]=1-0=1
+      4.0, 4.0,                        # Test 19: MatVecMul ([[4,2],[1,3]]*[0.5,1])[0]=4, df/dv[0]=4
+
+      # Thread 4: Larger values
+      25.0, 10.0,                      # Test 0: Quadratic f(5)=25, f'=10
+      0.909297427, -0.416146837,       # Test 1: Sine f(2)
+      7.389056099, 7.389056099,        # Test 2: Exponential f(2)=e^2
+      2.302585093, 0.1,               # Test 3: Logarithm f(10)=ln(10), f'=0.1
+      0.247403959, 0.968912422,        # Test 4: Chain Rule f(0.5)=sin(0.25)
+      1.818594854, 0.077003754,        # Test 5: Product Rule f(2)=2*sin(2)
+      13.0, 1.0,                       # Test 6: Addition f(10,3)=13
+      24.0, 4.0,                       # Test 7: Multiplication f(6,4)=24, df/dx=4
+      5.0, 0.333333333,              # Test 8: Division f(15,3)=5, df/dx=1/3
+      25.0, 10.0,                      # Test 9: Complex f(7,2)=25, df/dx=10
+      10.0, 1.0,                       # Test 10: Vector Dot dot([4,3],[1,2])=10
+      10.0, 0.8,                       # Test 11: Vector Length |[8,6]|=10, df/dv[0]=0.8
+      29.0, 7.0,                       # Test 12: Matrix Det det([[5,2],[3,7]])=29, df/dM[0][0]=7
+      3.162277660, 0.158113883,        # Test 13: Power f(10)=10^0.5, f'
+      -4.0, -1.0,                      # Test 14: Negate f(4)=-4
+      -0.416146837, -0.909297427,      # Test 15: Cosine f(2)=cos(2), f'=-sin(2)
+      5.0, 0.1,                        # Test 16: Sqrt f(25)=5, f'=0.1
+      0.384615385, 0.988621440,        # Test 17: Normalize normalize([5,12])[0], df/dv[0]=1-(5/13)^2
+      1.0, 1.0,                        # Test 18: Cross cross([3,1,4],[2,0,1])[0]=1*1-4*0=1, df/du[0]=1-0=1
+      27.0, 5.0,                       # Test 19: MatVecMul ([[5,3],[1,2]]*[3,4])[0]=27, df/dv[0]=5
+
+      # Thread 5: Mixed signs
+      4.0, -4.0,                       # Test 0: Quadratic f(-2)=4, f'(-2)=-4
+      -0.479425539, 0.877582562,       # Test 1: Sine f(-0.5)
+      0.606530660, 0.606530660,        # Test 2: Exponential f(-0.5)
+      1.098612289, 0.333333333,        # Test 3: Logarithm f(3), f'=1/3
+      0.247403959, -0.968912422,       # Test 4: Chain Rule f(-0.5)
+      0.239712769, -0.918216820,       # Test 5: Product Rule f(-0.5)
+      1.0, 1.0,                        # Test 6: Addition f(-3,4)=1
+      -10.0, 5.0,                      # Test 7: Multiplication f(-2,5)=-10, df/dx=5
+      -2.0, 0.333333333,              # Test 8: Division f(-6,3)=-2, df/dx=1/3
+      9.0, -6.0,                       # Test 9: Complex f(-1,2)=9, df/dx=-6
+      5.0, -3.0,                       # Test 10: Vector Dot dot([-1,2],[-3,1])=5, df/du[0]=-3
+      5.0, -0.6,                       # Test 11: Vector Length |[-3,4]|=5, df/dv[0]=-0.6
+      -1.0, -1.0,                      # Test 12: Matrix Det det([[-2,1],[3,-1]])=-1, df/dM[0][0]=-1
+      8.0, 12.0,                       # Test 13: Power f(2)=2^3=8, f'=12
+      7.0, -1.0,                       # Test 14: Negate f(-7)=7
+      0.877582562, 0.479425539,        # Test 15: Cosine f(-0.5)=cos(-0.5), f'=sin(0.5)
+      1.0, 0.5,                        # Test 16: Sqrt f(1)=1, f'=0.5
+      -0.6, 0.928,                     # Test 17: Normalize normalize([-3,4])[0]=-0.6, df/dv[0]=1-(-3/5)^2=0.928
+      -3.0, -11.0,                     # Test 18: Cross cross([1,-2,3],[4,5,-6])[0]=-2*(-6)-3*5=-3, df/du[0]=(-6)-5=-11
+      -7.0, -1.0,                      # Test 19: MatVecMul ([[-1,3],[2,-4]]*[1,-2])[0]=-7, df/dv[0]=-1
+
+      # Thread 6: Pi-related
+      16.0, 8.0,                       # Test 0: Quadratic f(4)=16, f'=8
+      0.0, -1.0,                       # Test 1: Sine f(pi)~0, f'(pi)=-1
+      0.367879441, 0.367879441,        # Test 2: Exponential f(-1)=e^-1
+      -2.302585093, 10.0,             # Test 3: Logarithm f(0.1), f'=10
+      0.062459318, 0.499023755,        # Test 4: Chain Rule f(0.25)=sin(0.0625)
+      1.496242480, 1.103600789,        # Test 5: Product Rule f(1.5)=1.5*sin(1.5)
+      4.0, 1.0,                        # Test 6: Addition f(6,-2)=4
+      -9.0, -3.0,                      # Test 7: Multiplication f(3,-3)=-9, df/dx=-3
+      -2.0, -0.5,                      # Test 8: Division f(4,-2)=-2, df/dx=-0.5
+      9.0, 6.0,                        # Test 9: Complex f(2,-1)=9, df/dx=6
+      5.0, 4.0,                        # Test 10: Vector Dot dot([2,-1],[4,3])=5, df/du[0]=4
+      6.708203932, 0.894427191,        # Test 11: Vector Length |[6,-3]|
+      5.0, 4.0,                        # Test 12: Matrix Det det([[2,1],[3,4]])=5, df/dM[0][0]=4
+      8.0, 12.0,                       # Test 13: Power f(2)=2^3=8, f'=12
+      3.0, -1.0,                       # Test 14: Negate f(-3)=3
+      -1.0, 0.0,                       # Test 15: Cosine f(pi)=cos(pi)=-1, f'=-sin(pi)~0
+      10.0, 0.05,                      # Test 16: Sqrt f(100)=10, f'=0.05
+      -0.707106781, 0.646446609,       # Test 17: Normalize normalize([-1,-1])[0], df/dv[0]=1-(-1/sqrt(2))^2=0.5
+      -3.0, 11.0,                      # Test 18: Cross cross([-1,2,-3],[4,-5,6])[0]=2*6-(-3)*(-5)=-3, df/du[0]=6-(-5)=11
+      5.0, 2.0,                        # Test 19: MatVecMul ([[2,-1],[3,5]]*[2,-1])[0]=5, df/dv[0]=2
+
+      # Thread 7: Edge-ish values
+      0.01, 0.2,                       # Test 0: Quadratic f(0.1)=0.01, f'=0.2
+      0.009999833, 0.999950000,        # Test 1: Sine f(0.01)
+      1.010050167, 1.010050167,        # Test 2: Exponential f(0.01)
+      -4.605170186, 100.0,            # Test 3: Logarithm f(0.01), f'=100
+      0.0001, 0.02,                    # Test 4: Chain Rule f(0.01)=sin(0.0001), f'~0.02
+      9.99983334e-05, 0.019999333,     # Test 5: Product Rule f(0.01)=0.01*sin(0.01)
+      300.0, 1.0,                      # Test 6: Addition f(100,200)=300
+      0.02, 0.2,                       # Test 7: Multiplication f(0.1,0.2)=0.02, df/dx=0.2
+      5.0, 10.0,                       # Test 8: Division f(0.5,0.1)=5, df/dx=10
+      0.0025, 0.1,                     # Test 9: Complex f(0.1,0.05)=0.0025, df/dx=0.1
+      2.0, 1.0,                        # Test 10: Vector Dot dot([1,1],[1,1])=2
+      0.141421356, 0.707106781,        # Test 11: Vector Length |[0.1,0.1]|
+      0.0, 0.0,                        # Test 12: Matrix Det det([[1,0],[1,0]])=0, df/dM[0][0]=0
+      1e-10, 1e-08,                    # Test 13: Power f(0.1)=0.1^10, f'=10*0.1^9
+      -100.0, -1.0,                    # Test 14: Negate f(100)=-100
+      0.999950000, -0.009999833,       # Test 15: Cosine f(0.01)
+      0.1, 5.0,                        # Test 16: Sqrt f(0.01)=0.1, f'=5
+      1.0, 0.0,                        # Test 17: Normalize normalize([1,0])[0]=1, df/dv[0]=1-1=0
+      0.0, 1.0,                        # Test 18: Cross cross([1,0,0],[0,0,1])[0]=0*1-0*0=0, df/du[0]=1-0=1
+      1.0, 1.0,                        # Test 19: MatVecMul ([[1,0],[0,1]]*[1,1])[0]=1, df/dv[0]=1
+    ]
+
+DescriptorSets:
+  - Resources:
+    - Name: InputBuffer
+      Kind: StructuredBuffer
+      DirectXBinding: { Register: 0, Space: 0 }
+      VulkanBinding: { Binding: 0 }
+    - Name: ResultBuffer
+      Kind: RWStructuredBuffer
+      DirectXBinding: { Register: 0, Space: 0 }
+      VulkanBinding: { Binding: 1 }
+
+Results:
+  - Result: BackwardADTest
+    Rule: BufferFloatULP
+    ULPT: 70
+    ZeroTolerance: 1e-6
+    Actual: ResultBuffer
+    Expected: ExpectedResults
+
+...
+
+# RUN: %dxc_target -T cs_6_6 -E RunAllBackwardTests -Fo %t.o %S/BackwardAD_Tests.hlsl
+# RUN: %offloader %s %t.o

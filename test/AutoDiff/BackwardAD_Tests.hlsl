@@ -4,566 +4,543 @@
 // Test Suite for Backward Automatic Differentiation
 // ============================================================================
 
-struct BackTestResult
+// Structure to store individual test results
+struct BackADTestResult
 {
-    bool passed;
-    float expected_value;
-    float actual_value;
-    float expected_gradient;
-    float actual_gradient;
-    float tolerance;
+    float value;
+    float gradient;
 };
 
-// Helper function to check if two floats are approximately equal
-bool BackApproxEqual(float a, float b, float tolerance = 1e-5f)
+// Structure to store all test input values (provided by CPU)
+struct BackADTestInputs
 {
-    return abs(a - b) < tolerance;
-}
+    // Single-variable tests
+    float quadratic_x;
+    float sine_x;
+    float exponential_x;
+    float logarithm_x;
+    float chain_rule_x;
+    float product_rule_x;
 
-// Test basic quadratic function f(x) = x^2
-BackTestResult TestBackwardQuadratic()
+    // Two-variable tests
+    float addition_x;
+    float addition_y;
+    float multiplication_x;
+    float multiplication_y;
+    float division_x;
+    float division_y;
+    float complex_x;
+    float complex_y;
+
+    // Vector tests
+    float vector_dot_ux;
+    float vector_dot_uy;
+    float vector_dot_vx;
+    float vector_dot_vy;
+    float vector_length_vx;
+    float vector_length_vy;
+
+    // Matrix test
+    float matrix_det_a;
+    float matrix_det_b;
+    float matrix_det_c;
+    float matrix_det_d;
+
+    // Additional single-variable tests
+    float power_base;
+    float power_exponent;
+    float negate_x;
+    float cosine_x;
+    float sqrt_x;
+
+    // Additional vector tests
+    float normalize_vx;
+    float normalize_vy;
+    float cross_ux;
+    float cross_uy;
+    float cross_uz;
+    float cross_vx;
+    float cross_vy;
+    float cross_vz;
+    float matvec_m00;
+    float matvec_m01;
+    float matvec_m10;
+    float matvec_m11;
+    float matvec_vx;
+    float matvec_vy;
+};
+
+// Input buffer to receive test parameters from CPU
+StructuredBuffer<BackADTestInputs> InputBuffer : register(t0);
+
+// Structured buffer to store test results for CPU readback
+RWStructuredBuffer<BackADTestResult> ResultBuffer : register(u0);
+
+// Test 0: f(x) = x^2, f'(x) = 2x
+BackADTestResult TestBackwardQuadratic(float input_x)
 {
-    BackTestResult result;
-    result.tolerance = 1e-5f;
-    
-    GradientContext<float> context; 
+    BackADTestResult result;
+    GradientContext<float> context;
     context.variable_count = 0;
-    
-    // f(x) = x^2, f'(x) = 2x
-    // At x = 3: f(3) = 9, f'(3) = 6
-    Variable<float> x = variable<float>(context, 3.0f);
+
+    Variable<float> x = variable<float>(context, input_x);
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
-    
     BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > f = multiply<float>(x_expr, x_expr);
-    
-    float function_value = compute_gradients<float>(context, f);
-    float gradient_value = x.gradient(context);
-    
-    result.expected_value = 9.0f;
-    result.actual_value = function_value;
-    result.expected_gradient = 6.0f;
-    result.actual_gradient = gradient_value;
-    
-    result.passed = BackApproxEqual(function_value, 9.0f, result.tolerance) &&
-                   BackApproxEqual(gradient_value, 6.0f, result.tolerance);
-    
+
+    result.value = compute_gradients<float>(context, f);
+    result.gradient = x.gradient(context);
     return result;
 }
 
-// Test addition: f(x,y) = x + y
-BackTestResult TestBackwardAddition()
+// Test 1: f(x) = sin(x), f'(x) = cos(x)
+BackADTestResult TestBackwardSine(float input_x)
 {
-    BackTestResult result;
-    result.tolerance = 1e-5f;
-    
+    BackADTestResult result;
     GradientContext<float> context;
     context.variable_count = 0;
-    
-    // f(x,y) = x + y, ∂f/∂x = 1, ∂f/∂y = 1
-    Variable<float> x = variable<float>(context, 2.0f);
-    Variable<float> y = variable<float>(context, 3.0f);
-    
-    VariableExpr<float> x_expr = makeVariableExpr<float>(x);
-    VariableExpr<float> y_expr = makeVariableExpr<float>(y);
-    
-    BackAddExpr<float, VariableExpr<float>, VariableExpr<float> > f = add<float>(x_expr, y_expr);
-    
-    float function_value = compute_gradients<float>(context, f);
-    float x_gradient = x.gradient(context);
-    float y_gradient = y.gradient(context);
-    
-    result.expected_value = 5.0f;  // 2 + 3
-    result.actual_value = function_value;
-    result.expected_gradient = 1.0f;  // ∂f/∂x = 1
-    result.actual_gradient = x_gradient;
-    
-    result.passed = BackApproxEqual(function_value, 5.0f, result.tolerance) &&
-                   BackApproxEqual(x_gradient, 1.0f, result.tolerance) &&
-                   BackApproxEqual(y_gradient, 1.0f, result.tolerance);
-    
-    return result;
-}
 
-// Test multiplication: f(x,y) = x * y
-BackTestResult TestBackwardMultiplication()
-{
-    BackTestResult result;
-    result.tolerance = 1e-5f;
-    
-    GradientContext<float> context;
-    context.variable_count = 0;
-    
-    // f(x,y) = x * y, ∂f/∂x = y, ∂f/∂y = x
-    Variable<float> x = variable<float>(context, 4.0f);
-    Variable<float> y = variable<float>(context, 5.0f);
-    
+    Variable<float> x = variable<float>(context, input_x);
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
-    VariableExpr<float> y_expr = makeVariableExpr<float>(y);
-    
-    BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > f = multiply<float>(x_expr, y_expr);
-    
-    float function_value = compute_gradients<float>(context, f);
-    float x_gradient = x.gradient(context);
-    float y_gradient = y.gradient(context);
-    
-    result.expected_value = 20.0f;  // 4 * 5
-    result.actual_value = function_value;
-    result.expected_gradient = 5.0f;  // ∂f/∂x = y = 5
-    result.actual_gradient = x_gradient;
-    
-    result.passed = BackApproxEqual(function_value, 20.0f, result.tolerance) &&
-                   BackApproxEqual(x_gradient, 5.0f, result.tolerance) &&
-                   BackApproxEqual(y_gradient, 4.0f, result.tolerance);
-    
-    return result;
-}
-
-// Test division: f(x,y) = x / y
-BackTestResult TestBackwardDivision()
-{
-    BackTestResult result;
-    result.tolerance = 1e-5f;
-    
-    GradientContext<float> context;
-    context.variable_count = 0;
-    
-    // f(x,y) = x / y, ∂f/∂x = 1/y, ∂f/∂y = -x/y^2
-    Variable<float> x = variable<float>(context, 8.0f);
-    Variable<float> y = variable<float>(context, 2.0f);
-    
-    VariableExpr<float> x_expr = makeVariableExpr<float>(x);
-    VariableExpr<float> y_expr = makeVariableExpr<float>(y);
-    
-    BackDivExpr<float, VariableExpr<float>, VariableExpr<float> > f = divide<float>(x_expr, y_expr);
-    
-    float function_value = compute_gradients<float>(context, f);
-    float x_gradient = x.gradient(context);
-    float y_gradient = y.gradient(context);
-    
-    result.expected_value = 4.0f;    // 8 / 2
-    result.actual_value = function_value;
-    result.expected_gradient = 0.5f; // ∂f/∂x = 1/y = 1/2
-    result.actual_gradient = x_gradient;
-    
-    // ∂f/∂y = -x/y^2 = -8/4 = -2
-    float expected_y_gradient = -2.0f;
-    
-    result.passed = BackApproxEqual(function_value, 4.0f, result.tolerance) &&
-                   BackApproxEqual(x_gradient, 0.5f, result.tolerance) &&
-                   BackApproxEqual(y_gradient, expected_y_gradient, result.tolerance);
-    
-    return result;
-}
-
-// Test sine function: f(x) = sin(x)
-BackTestResult TestBackwardSine()
-{
-    BackTestResult result;
-    result.tolerance = 1e-4f;
-    
-    GradientContext<float> context;
-    context.variable_count = 0;
-    
-    // f(x) = sin(x), f'(x) = cos(x)
-    // At x = 0: f(0) = 0, f'(0) = 1
-    Variable<float> x = variable<float>(context, 0.0f);
-    VariableExpr<float> x_expr = makeVariableExpr<float>(x);
-    
     BackSinExpr<float, VariableExpr<float> > f = sinExpr<float>(x_expr);
-    
-    float function_value = compute_gradients<float>(context, f);
-    float gradient_value = x.gradient(context);
-    
-    result.expected_value = 0.0f;  // sin(0) = 0
-    result.actual_value = function_value;
-    result.expected_gradient = 1.0f;  // cos(0) = 1
-    result.actual_gradient = gradient_value;
-    
-    result.passed = BackApproxEqual(function_value, 0.0f, result.tolerance) &&
-                   BackApproxEqual(gradient_value, 1.0f, result.tolerance);
-    
+
+    result.value = compute_gradients<float>(context, f);
+    result.gradient = x.gradient(context);
     return result;
 }
 
-// Test exponential function: f(x) = exp(x)
-BackTestResult TestBackwardExponential()
+// Test 2: f(x) = exp(x), f'(x) = exp(x)
+BackADTestResult TestBackwardExponential(float input_x)
 {
-    BackTestResult result;
-    result.tolerance = 1e-4f;
-    
+    BackADTestResult result;
     GradientContext<float> context;
     context.variable_count = 0;
-    
-    // f(x) = exp(x), f'(x) = exp(x)
-    // At x = 0: f(0) = 1, f'(0) = 1
-    Variable<float> x = variable<float>(context, 0.0f);
+
+    Variable<float> x = variable<float>(context, input_x);
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
-    
     BackExpExpr<float, VariableExpr<float> > f = expExpr<float>(x_expr);
-    
-    float function_value = compute_gradients<float>(context, f);
-    float gradient_value = x.gradient(context);
-    
-    result.expected_value = 1.0f;  // exp(0) = 1
-    result.actual_value = function_value;
-    result.expected_gradient = 1.0f;  // exp(0) = 1
-    result.actual_gradient = gradient_value;
-    
-    result.passed = BackApproxEqual(function_value, 1.0f, result.tolerance) &&
-                   BackApproxEqual(gradient_value, 1.0f, result.tolerance);
-    
+
+    result.value = compute_gradients<float>(context, f);
+    result.gradient = x.gradient(context);
     return result;
 }
 
-// Test logarithm function: f(x) = log(x)
-BackTestResult TestBackwardLogarithm()
+// Test 3: f(x) = log(x), f'(x) = 1/x
+BackADTestResult TestBackwardLogarithm(float input_x)
 {
-    BackTestResult result;
-    result.tolerance = 1e-4f;
-    
+    BackADTestResult result;
     GradientContext<float> context;
     context.variable_count = 0;
-    
-    // f(x) = log(x), f'(x) = 1/x
-    // At x = 1: f(1) = 0, f'(1) = 1
-    Variable<float> x = variable<float>(context, 1.0f);
+
+    Variable<float> x = variable<float>(context, input_x);
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
-    
     BackLogExpr<float, VariableExpr<float> > f = logExpr<float>(x_expr);
-    
-    float function_value = compute_gradients<float>(context, f);
-    float gradient_value = x.gradient(context);
-    
-    result.expected_value = 0.0f;  // log(1) = 0
-    result.actual_value = function_value;
-    result.expected_gradient = 1.0f;  // 1/1 = 1
-    result.actual_gradient = gradient_value;
-    
-    result.passed = BackApproxEqual(function_value, 0.0f, result.tolerance) &&
-                   BackApproxEqual(gradient_value, 1.0f, result.tolerance);
-    
+
+    result.value = compute_gradients<float>(context, f);
+    result.gradient = x.gradient(context);
     return result;
 }
 
-// Test chain rule: f(x) = sin(x^2)
-BackTestResult TestBackwardChainRule()
+// Test 4: f(x) = sin(x^2), f'(x) = 2x*cos(x^2)
+BackADTestResult TestBackwardChainRule(float input_x)
 {
-    BackTestResult result;
-    result.tolerance = 1e-4f;
-    
+    BackADTestResult result;
     GradientContext<float> context;
     context.variable_count = 0;
-    
-    // f(x) = sin(x^2), f'(x) = cos(x^2) * 2x
-    // At x = 0: f(0) = sin(0) = 0, f'(0) = cos(0) * 0 = 0
-    Variable<float> x = variable<float>(context, 0.0f);
+
+    Variable<float> x = variable<float>(context, input_x);
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
-    
     BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > x_squared = multiply<float>(x_expr, x_expr);
     BackSinExpr<float, BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > > f = sinExpr<float>(x_squared);
-    
-    float function_value = compute_gradients<float>(context, f);
-    float gradient_value = x.gradient(context);
-    
-    result.expected_value = 0.0f;  // sin(0) = 0
-    result.actual_value = function_value;
-    result.expected_gradient = 0.0f;  // cos(0) * 2*0 = 0
-    result.actual_gradient = gradient_value;
-    
-    result.passed = BackApproxEqual(function_value, 0.0f, result.tolerance) &&
-                   BackApproxEqual(gradient_value, 0.0f, result.tolerance);
-    
+
+    result.value = compute_gradients<float>(context, f);
+    result.gradient = x.gradient(context);
     return result;
 }
 
-// Test product rule: f(x) = x * sin(x)
-BackTestResult TestBackwardProductRule()
+// Test 5: f(x) = x*sin(x), f'(x) = sin(x) + x*cos(x)
+BackADTestResult TestBackwardProductRule(float input_x)
 {
-    BackTestResult result;
-    result.tolerance = 1e-4f;
-    
+    BackADTestResult result;
     GradientContext<float> context;
     context.variable_count = 0;
-    
-    // f(x) = x * sin(x), f'(x) = sin(x) + x * cos(x)
-    // At x = 0: f(0) = 0, f'(0) = sin(0) + 0*cos(0) = 0
-    Variable<float> x = variable<float>(context, 0.0f);
+
+    Variable<float> x = variable<float>(context, input_x);
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
-    
     BackSinExpr<float, VariableExpr<float> > sin_x = sinExpr<float>(x_expr);
     BackMulExpr<float, VariableExpr<float>, BackSinExpr<float, VariableExpr<float> > > f = multiply<float>(x_expr, sin_x);
-    
-    float function_value = compute_gradients<float>(context, f);
-    float gradient_value = x.gradient(context);
-    
-    result.expected_value = 0.0f;  // 0 * sin(0) = 0
-    result.actual_value = function_value;
-    result.expected_gradient = 0.0f;  // sin(0) + 0*cos(0) = 0
-    result.actual_gradient = gradient_value;
-    
-    result.passed = BackApproxEqual(function_value, 0.0f, result.tolerance) &&
-                   BackApproxEqual(gradient_value, 0.0f, result.tolerance);
-    
+
+    result.value = compute_gradients<float>(context, f);
+    result.gradient = x.gradient(context);
     return result;
 }
 
-// Test complex expression: f(x,y) = x^2 + y^2 - 2*x*y
-BackTestResult TestBackwardComplexExpression()
+// Test 6: f(x,y) = x + y, df/dx = 1
+BackADTestResult TestBackwardAddition(float input_x, float input_y)
 {
-    BackTestResult result;
-    result.tolerance = 1e-4f;
-    
+    BackADTestResult result;
     GradientContext<float> context;
     context.variable_count = 0;
-    
-    // f(x,y) = x^2 + y^2 - 2*x*y
-    // ∂f/∂x = 2x - 2y, ∂f/∂y = 2y - 2x
-    // At (x,y) = (3,2): f = 9 + 4 - 12 = 1, ∂f/∂x = 6-4=2, ∂f/∂y = 4-6=-2
-    Variable<float> x = variable<float>(context, 3.0f);
-    Variable<float> y = variable<float>(context, 2.0f);
-    
+
+    Variable<float> x = variable<float>(context, input_x);
+    Variable<float> y = variable<float>(context, input_y);
     VariableExpr<float> x_expr = makeVariableExpr<float>(x);
     VariableExpr<float> y_expr = makeVariableExpr<float>(y);
-    
+    BackAddExpr<float, VariableExpr<float>, VariableExpr<float> > f = add<float>(x_expr, y_expr);
+
+    result.value = compute_gradients<float>(context, f);
+    result.gradient = x.gradient(context);
+    return result;
+}
+
+// Test 7: f(x,y) = x * y, df/dx = y
+BackADTestResult TestBackwardMultiplication(float input_x, float input_y)
+{
+    BackADTestResult result;
+    GradientContext<float> context;
+    context.variable_count = 0;
+
+    Variable<float> x = variable<float>(context, input_x);
+    Variable<float> y = variable<float>(context, input_y);
+    VariableExpr<float> x_expr = makeVariableExpr<float>(x);
+    VariableExpr<float> y_expr = makeVariableExpr<float>(y);
+    BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > f = multiply<float>(x_expr, y_expr);
+
+    result.value = compute_gradients<float>(context, f);
+    result.gradient = x.gradient(context);
+    return result;
+}
+
+// Test 8: f(x,y) = x / y, df/dx = 1/y
+BackADTestResult TestBackwardDivision(float input_x, float input_y)
+{
+    BackADTestResult result;
+    GradientContext<float> context;
+    context.variable_count = 0;
+
+    Variable<float> x = variable<float>(context, input_x);
+    Variable<float> y = variable<float>(context, input_y);
+    VariableExpr<float> x_expr = makeVariableExpr<float>(x);
+    VariableExpr<float> y_expr = makeVariableExpr<float>(y);
+    BackDivExpr<float, VariableExpr<float>, VariableExpr<float> > f = divide<float>(x_expr, y_expr);
+
+    result.value = compute_gradients<float>(context, f);
+    result.gradient = x.gradient(context);
+    return result;
+}
+
+// Test 9: f(x,y) = x^2 + y^2 - 2xy, df/dx = 2x - 2y
+BackADTestResult TestBackwardComplexExpression(float input_x, float input_y)
+{
+    BackADTestResult result;
+    GradientContext<float> context;
+    context.variable_count = 0;
+
+    Variable<float> x = variable<float>(context, input_x);
+    Variable<float> y = variable<float>(context, input_y);
+    VariableExpr<float> x_expr = makeVariableExpr<float>(x);
+    VariableExpr<float> y_expr = makeVariableExpr<float>(y);
+
     BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > x_squared = multiply<float>(x_expr, x_expr);
     BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > y_squared = multiply<float>(y_expr, y_expr);
     BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > xy = multiply<float>(x_expr, y_expr);
     BackMulExpr<float, float, BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > > two_xy = multiply<float>(2.0f, xy);
-    
+
     BackAddExpr<float, BackMulExpr<float, VariableExpr<float>, VariableExpr<float> >, BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > > x2_plus_y2 = add<float>(x_squared, y_squared);
     BackSubExpr<float, BackAddExpr<float, BackMulExpr<float, VariableExpr<float>, VariableExpr<float> >, BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > >, BackMulExpr<float, float, BackMulExpr<float, VariableExpr<float>, VariableExpr<float> > > > f = subtract<float>(x2_plus_y2, two_xy);
-    
-    float function_value = compute_gradients<float>(context, f);
-    float x_gradient = x.gradient(context);
-    float y_gradient = y.gradient(context);
-    
-    result.expected_value = 1.0f;
-    result.actual_value = function_value;
-    result.expected_gradient = 2.0f;  // ∂f/∂x
-    result.actual_gradient = x_gradient;
-    
-    result.passed = BackApproxEqual(function_value, 1.0f, result.tolerance) &&
-                   BackApproxEqual(x_gradient, 2.0f, result.tolerance) &&
-                   BackApproxEqual(y_gradient, -2.0f, result.tolerance);
-    
+
+    result.value = compute_gradients<float>(context, f);
+    result.gradient = x.gradient(context);
     return result;
 }
 
 // ============================================================================
-// Vector and Matrix Test Structures
+// Vector and Matrix Tests
 // ============================================================================
 
-struct BackVectorTestResult
+// Test 10: f(u) = dot(u, v_const), df/du = v_const, report df/du[0]
+BackADTestResult TestBackwardVectorDot(float ux, float uy, float vx, float vy)
 {
-    bool passed;
-    float expected_value;
-    float actual_value;
-    vector<float, 2> expected_gradient;
-    vector<float, 2> actual_gradient;
-    float tolerance;
-};
-
-struct BackMatrixTestResult  
-{
-    bool passed;
-    float expected_value;
-    float actual_value;
-    matrix<float, 2, 2> expected_gradient;
-    matrix<float, 2, 2> actual_gradient;
-    float tolerance;
-};
-
-// Helper function to check vector equality
-bool BackApproxEqualVec2(vector<float, 2> a, vector<float, 2> b, float tolerance = 1e-5f)
-{
-    return BackApproxEqual(a.x, b.x, tolerance) && BackApproxEqual(a.y, b.y, tolerance);
-}
-
-// Helper function to check matrix equality
-bool BackApproxEqualMat2x2(matrix<float, 2, 2> a, matrix<float, 2, 2> b, float tolerance = 1e-5f)
-{
-    return BackApproxEqual(a[0][0], b[0][0], tolerance) && BackApproxEqual(a[0][1], b[0][1], tolerance) &&
-           BackApproxEqual(a[1][0], b[1][0], tolerance) && BackApproxEqual(a[1][1], b[1][1], tolerance);
-}
-
-// Test vector dot product: f(u,v) = dot(u,v)
-BackVectorTestResult TestBackwardVectorDot()
-{
-    BackVectorTestResult result;
-    result.tolerance = 1e-4f;
-    
+    BackADTestResult result;
     GradientContext<vector<float, 2> > context;
     context.variable_count = 0;
-    
-    // f(u,v) = dot([u1,u2], [3,4]) = 3*u1 + 4*u2  
-    // ∂f/∂u = [3,4]
-    Variable<vector<float, 2> > u = variableVector<float, 2>(context, vector<float, 2>(1.0f, 2.0f));
+
+    Variable<vector<float, 2> > u = variableVector<float, 2>(context, vector<float, 2>(ux, uy));
     VariableExpr<vector<float, 2> > u_expr;
     u_expr.var = u;
-    
-    // Constant vector [3,4]
+
     VariableExpr<vector<float, 2> > v_expr;
-    v_expr.var.value = vector<float, 2>(3.0f, 4.0f);
-    v_expr.var.id = -1; // Mark as constant
-    
+    v_expr.var.value = vector<float, 2>(vx, vy);
+    v_expr.var.id = -1;
+
     BackDotExpr<float, 2, VariableExpr<vector<float, 2> >, VariableExpr<vector<float, 2> > > f = dotProduct<float, 2>(u_expr, v_expr);
-    
-    float function_value = compute_gradients(context, f);
-    vector<float, 2> gradient_value = u.gradient(context);
-    
-    result.expected_value = 11.0f;  // 1*3 + 2*4 = 11
-    result.actual_value = function_value;
-    result.expected_gradient = vector<float, 2>(3.0f, 4.0f);  // ∂f/∂u = [3,4]
-    result.actual_gradient = gradient_value;
-    
-    result.passed = BackApproxEqual(function_value, 11.0f, result.tolerance) &&
-                   BackApproxEqualVec2(gradient_value, vector<float, 2>(3.0f, 4.0f), result.tolerance);
-    
+
+    result.value = compute_gradients(context, f);
+    vector<float, 2> grad = u.gradient(context);
+    result.gradient = grad.x;
     return result;
 }
 
-// Test vector length: f(v) = |v|
-BackVectorTestResult TestBackwardVectorLength()
+// Test 11: f(v) = |v|, df/dv = v/|v|, report df/dv[0]
+BackADTestResult TestBackwardVectorLength(float vx, float vy)
 {
-    BackVectorTestResult result;
-    result.tolerance = 1e-4f;
-    
+    BackADTestResult result;
     GradientContext<vector<float, 2> > context;
     context.variable_count = 0;
-    
-    // f(v) = |[3,4]| = 5
-    // ∂f/∂v = v/|v| = [3,4]/5 = [0.6, 0.8]
-    Variable<vector<float, 2> > v = variableVector<float, 2>(context, vector<float, 2>(3.0f, 4.0f));
+
+    Variable<vector<float, 2> > v = variableVector<float, 2>(context, vector<float, 2>(vx, vy));
     VariableExpr<vector<float, 2> > v_expr;
     v_expr.var = v;
-    
+
     BackLengthExpr<float, 2, VariableExpr<vector<float, 2> > > f = lengthExpr<float, 2>(v_expr);
-    
-    float function_value = compute_gradients(context, f);
-    vector<float, 2> gradient_value = v.gradient(context);
-    
-    result.expected_value = 5.0f;  // sqrt(9+16) = 5
-    result.actual_value = function_value;
-    result.expected_gradient = vector<float, 2>(0.6f, 0.8f);  // [3,4]/5
-    result.actual_gradient = gradient_value;
-    
-    result.passed = BackApproxEqual(function_value, 5.0f, result.tolerance) &&
-                   BackApproxEqualVec2(gradient_value, vector<float, 2>(0.6f, 0.8f), result.tolerance);
-    
+
+    result.value = compute_gradients(context, f);
+    vector<float, 2> grad = v.gradient(context);
+    result.gradient = grad.x;
     return result;
 }
 
-// Test vector normalization: f(v) = normalize(v)
-BackVectorTestResult TestBackwardVectorNormalize()
+// Test 12: f(M) = det(M), df/dM = adj(M)^T, report df/dM[0][0]
+BackADTestResult TestBackwardMatrixDeterminant(float a, float b, float c, float d)
 {
-    BackVectorTestResult result;
-    result.tolerance = 1e-4f;
-    
-    GradientContext<vector<float, 2> > context;
-    context.variable_count = 0;
-    
-    // f(v) = normalize([3,4]) = [0.6, 0.8]
-    Variable<vector<float, 2> > v = variableVector<float, 2>(context, vector<float, 2>(3.0f, 4.0f));
-    VariableExpr<vector<float, 2> > v_expr;
-    v_expr.var = v;
-    
-    BackNormalizeExpr<float, 2, VariableExpr<vector<float, 2> > > f = normalizeExpr<float, 2>(v_expr);
-    
-    vector<float, 2> function_value = compute_gradients(context, f);
-    vector<float, 2> gradient_value = v.gradient(context);
-    
-    // The gradient computation for normalize is complex, so we'll just check the function value
-    result.expected_value = 0.6f;  // x component of normalized [3,4]
-    result.actual_value = function_value.x;
-    result.expected_gradient = vector<float, 2>(0.0f, 0.0f);  // Simplified check
-    result.actual_gradient = gradient_value;
-    
-    result.passed = BackApproxEqual(function_value.x, 0.6f, result.tolerance) &&
-                   BackApproxEqual(function_value.y, 0.8f, result.tolerance);
-    
-    return result;
-}
-
-// Test matrix determinant: f(M) = det(M)
-BackMatrixTestResult TestBackwardMatrixDeterminant()
-{
-    BackMatrixTestResult result;
-    result.tolerance = 1e-4f;
-    
+    BackADTestResult result;
     GradientContext<matrix<float, 2, 2> > context;
     context.variable_count = 0;
-    
-    // f(M) = det([[2,1],[3,4]]) = 2*4 - 1*3 = 5
-    // ∂f/∂M = adj(M)^T = [[4,-3],[-1,2]]
-    Variable<matrix<float, 2, 2> > M = variableMatrix<float, 2, 2>(context, matrix<float, 2, 2>(2, 1, 3, 4));
+
+    Variable<matrix<float, 2, 2> > M = variableMatrix<float, 2, 2>(context, matrix<float, 2, 2>(a, b, c, d));
     VariableExpr<matrix<float, 2, 2> > M_expr;
     M_expr.var = M;
-    
+
     BackDet2x2Expr<float, VariableExpr<matrix<float, 2, 2> > > f = determinantExpr<float>(M_expr);
-    
-    float function_value = compute_gradients(context, f);
-    matrix<float, 2, 2> gradient_value = M.gradient(context);
-    
-    result.expected_value = 5.0f;  // det([[2,1],[3,4]]) = 5
-    result.actual_value = function_value;
-    result.expected_gradient = matrix<float, 2, 2>(4, -3, -1, 2);  // adjugate matrix
-    result.actual_gradient = gradient_value;
-    
-    result.passed = BackApproxEqual(function_value, 5.0f, result.tolerance) &&
-                   BackApproxEqualMat2x2(gradient_value, matrix<float, 2, 2>(4, -3, -1, 2), result.tolerance);
-    
+
+    result.value = compute_gradients(context, f);
+    matrix<float, 2, 2> grad = M.gradient(context);
+    result.gradient = grad[0][0];
+    return result;
+}
+
+// Test 13: f(x) = x^n, f'(x) = n*x^(n-1)
+BackADTestResult TestBackwardPower(float input_x, float exponent)
+{
+    BackADTestResult result;
+    GradientContext<float> context;
+    context.variable_count = 0;
+
+    Variable<float> x = variable<float>(context, input_x);
+    VariableExpr<float> x_expr = makeVariableExpr<float>(x);
+
+    // Use a constant variable for the exponent so it doesn't get gradient
+    Variable<float> n = variable<float>(context, exponent);
+    VariableExpr<float> n_expr = makeVariableExpr<float>(n);
+
+    BackPowExpr<float, VariableExpr<float>, VariableExpr<float> > f = power<float>(x_expr, n_expr);
+
+    result.value = compute_gradients<float>(context, f);
+    result.gradient = x.gradient(context);
+    return result;
+}
+
+// Test 14: f(x) = -x, f'(x) = -1
+BackADTestResult TestBackwardNegate(float input_x)
+{
+    BackADTestResult result;
+    GradientContext<float> context;
+    context.variable_count = 0;
+
+    Variable<float> x = variable<float>(context, input_x);
+    VariableExpr<float> x_expr = makeVariableExpr<float>(x);
+    BackNegExpr<float, VariableExpr<float> > f = negate<float>(x_expr);
+
+    result.value = compute_gradients<float>(context, f);
+    result.gradient = x.gradient(context);
+    return result;
+}
+
+// Test 15: f(x) = cos(x), f'(x) = -sin(x)
+BackADTestResult TestBackwardCosine(float input_x)
+{
+    BackADTestResult result;
+    GradientContext<float> context;
+    context.variable_count = 0;
+
+    Variable<float> x = variable<float>(context, input_x);
+    VariableExpr<float> x_expr = makeVariableExpr<float>(x);
+    BackCosExpr<float, VariableExpr<float> > f = cosExpr<float>(x_expr);
+
+    result.value = compute_gradients<float>(context, f);
+    result.gradient = x.gradient(context);
+    return result;
+}
+
+// Test 16: f(x) = sqrt(x), f'(x) = 1/(2*sqrt(x))
+BackADTestResult TestBackwardSqrt(float input_x)
+{
+    BackADTestResult result;
+    GradientContext<float> context;
+    context.variable_count = 0;
+
+    Variable<float> x = variable<float>(context, input_x);
+    VariableExpr<float> x_expr = makeVariableExpr<float>(x);
+    BackSqrtExpr<float, VariableExpr<float> > f = sqrtExpr<float>(x_expr);
+
+    result.value = compute_gradients<float>(context, f);
+    result.gradient = x.gradient(context);
+    return result;
+}
+
+// Test 17: f(v) = normalize(v)[0], report df/dv[0]
+BackADTestResult TestBackwardNormalize(float vx, float vy)
+{
+    BackADTestResult result;
+    GradientContext<vector<float, 2> > context;
+    context.variable_count = 0;
+
+    Variable<vector<float, 2> > v = variableVector<float, 2>(context, vector<float, 2>(vx, vy));
+    VariableExpr<vector<float, 2> > v_expr;
+    v_expr.var = v;
+
+    BackNormalizeExpr<float, 2, VariableExpr<vector<float, 2> > > f = normalizeExpr<float, 2>(v_expr);
+
+    vector<float, 2> fval = compute_gradients(context, f);
+    result.value = fval.x;
+    vector<float, 2> grad = v.gradient(context);
+    result.gradient = grad.x;
+    return result;
+}
+
+// Test 18: f(u,v) = cross(u,v)[0] = u.y*v.z - u.z*v.y, report df/du[0]
+BackADTestResult TestBackwardCrossProduct(float ux, float uy, float uz, float vx, float vy, float vz)
+{
+    BackADTestResult result;
+    GradientContext<vector<float, 3> > context;
+    context.variable_count = 0;
+
+    Variable<vector<float, 3> > u = variableVector<float, 3>(context, vector<float, 3>(ux, uy, uz));
+    VariableExpr<vector<float, 3> > u_expr;
+    u_expr.var = u;
+
+    VariableExpr<vector<float, 3> > v_expr;
+    v_expr.var.value = vector<float, 3>(vx, vy, vz);
+    v_expr.var.id = -1;
+
+    BackCrossExpr<float, VariableExpr<vector<float, 3> >, VariableExpr<vector<float, 3> > > f = crossProduct<float>(u_expr, v_expr);
+
+    vector<float, 3> fval = compute_gradients(context, f);
+    result.value = fval.x;
+    vector<float, 3> grad = u.gradient(context);
+    result.gradient = grad.x;
+    return result;
+}
+
+// Test 19: f(v) = (M*v)[0], report df/dv[0]
+BackADTestResult TestBackwardMatVecMul(float m00, float m01, float m10, float m11, float vx, float vy)
+{
+    BackADTestResult result;
+    GradientContext<vector<float, 2> > context;
+    context.variable_count = 0;
+
+    // Matrix is constant, vector is the variable
+    Variable<vector<float, 2> > v = variableVector<float, 2>(context, vector<float, 2>(vx, vy));
+    VariableExpr<vector<float, 2> > v_expr;
+    v_expr.var = v;
+
+    // Constant matrix
+    VariableExpr<matrix<float, 2, 2> > M_expr;
+    M_expr.var.value = matrix<float, 2, 2>(m00, m01, m10, m11);
+    M_expr.var.id = -1;
+
+    BackMatVecMulExpr<float, 2, 2, VariableExpr<matrix<float, 2, 2> >, VariableExpr<vector<float, 2> > > f = matVecMul<float, 2, 2>(M_expr, v_expr);
+
+    vector<float, 2> fval = compute_gradients(context, f);
+    result.value = fval.x;
+    vector<float, 2> grad = v.gradient(context);
+    result.gradient = grad.x;
     return result;
 }
 
 // ============================================================================
-// Test Runner
+// Compute Shader Entry Point
 // ============================================================================
 
-// Run all backward AD tests (including vector/matrix tests)
-void RunAllBackwardTests()
+[numthreads(8, 1, 1)]
+void RunAllBackwardTests(uint3 DispatchThreadID : SV_DispatchThreadID)
 {
-    BackTestResult results[9];
-    results[0] = TestBackwardQuadratic();
-    results[1] = TestBackwardAddition();
-    results[2] = TestBackwardMultiplication();
-    results[3] = TestBackwardDivision();
-    results[4] = TestBackwardSine();
-    results[5] = TestBackwardExponential();
-    results[6] = TestBackwardLogarithm();
-    results[7] = TestBackwardChainRule();
-    results[8] = TestBackwardComplexExpression();
-    
-    // Vector and matrix tests
-    BackVectorTestResult vector_results[3];
-    vector_results[0] = TestBackwardVectorDot();
-    vector_results[1] = TestBackwardVectorLength();
-    vector_results[2] = TestBackwardVectorNormalize();
-    
-    BackMatrixTestResult matrix_results[1];
-    matrix_results[0] = TestBackwardMatrixDeterminant();
-    
-    // Count passed tests
-    int scalar_passed = 0;
-    for (int i = 0; i < 9; i++)
+    uint threadIndex = DispatchThreadID.x;
+
+    // Read test inputs from CPU-provided buffer for this thread
+    BackADTestInputs inputs = InputBuffer[threadIndex];
+
+    // Collect all test results in local array
+    BackADTestResult results[20];
+
+    // Test 0: Quadratic - f(x) = x^2
+    results[0] = TestBackwardQuadratic(inputs.quadratic_x);
+
+    // Test 1: Sine - f(x) = sin(x)
+    results[1] = TestBackwardSine(inputs.sine_x);
+
+    // Test 2: Exponential - f(x) = exp(x)
+    results[2] = TestBackwardExponential(inputs.exponential_x);
+
+    // Test 3: Logarithm - f(x) = log(x)
+    results[3] = TestBackwardLogarithm(inputs.logarithm_x);
+
+    // Test 4: Chain Rule - f(x) = sin(x^2)
+    results[4] = TestBackwardChainRule(inputs.chain_rule_x);
+
+    // Test 5: Product Rule - f(x) = x*sin(x)
+    results[5] = TestBackwardProductRule(inputs.product_rule_x);
+
+    // Test 6: Addition - f(x,y) = x + y
+    results[6] = TestBackwardAddition(inputs.addition_x, inputs.addition_y);
+
+    // Test 7: Multiplication - f(x,y) = x * y
+    results[7] = TestBackwardMultiplication(inputs.multiplication_x, inputs.multiplication_y);
+
+    // Test 8: Division - f(x,y) = x / y
+    results[8] = TestBackwardDivision(inputs.division_x, inputs.division_y);
+
+    // Test 9: Complex Expression - f(x,y) = x^2 + y^2 - 2xy
+    results[9] = TestBackwardComplexExpression(inputs.complex_x, inputs.complex_y);
+
+    // Test 10: Vector Dot Product
+    results[10] = TestBackwardVectorDot(inputs.vector_dot_ux, inputs.vector_dot_uy,
+                                        inputs.vector_dot_vx, inputs.vector_dot_vy);
+
+    // Test 11: Vector Length
+    results[11] = TestBackwardVectorLength(inputs.vector_length_vx, inputs.vector_length_vy);
+
+    // Test 12: Matrix Determinant
+    results[12] = TestBackwardMatrixDeterminant(inputs.matrix_det_a, inputs.matrix_det_b,
+                                                inputs.matrix_det_c, inputs.matrix_det_d);
+
+    // Test 13: Power - f(x) = x^n
+    results[13] = TestBackwardPower(inputs.power_base, inputs.power_exponent);
+
+    // Test 14: Negate - f(x) = -x
+    results[14] = TestBackwardNegate(inputs.negate_x);
+
+    // Test 15: Cosine - f(x) = cos(x)
+    results[15] = TestBackwardCosine(inputs.cosine_x);
+
+    // Test 16: Sqrt - f(x) = sqrt(x)
+    results[16] = TestBackwardSqrt(inputs.sqrt_x);
+
+    // Test 17: Vector Normalize
+    results[17] = TestBackwardNormalize(inputs.normalize_vx, inputs.normalize_vy);
+
+    // Test 18: Cross Product
+    results[18] = TestBackwardCrossProduct(inputs.cross_ux, inputs.cross_uy, inputs.cross_uz,
+                                           inputs.cross_vx, inputs.cross_vy, inputs.cross_vz);
+
+    // Test 19: Matrix-Vector Multiply
+    results[19] = TestBackwardMatVecMul(inputs.matvec_m00, inputs.matvec_m01,
+                                        inputs.matvec_m10, inputs.matvec_m11,
+                                        inputs.matvec_vx, inputs.matvec_vy);
+
+    // Write all results to structured buffer at thread-specific indices
+    uint baseIndex = threadIndex * 20;
+    for (int i = 0; i < 20; i++)
     {
-        if (results[i].passed)
-            scalar_passed++;
+        ResultBuffer[baseIndex + i] = results[i];
     }
-    
-    int vector_passed = 0;
-    for (int i = 0; i < 3; i++)
-    {
-        if (vector_results[i].passed)
-            vector_passed++;
-    }
-    
-    int matrix_passed = 0;
-    for (int i = 0; i < 1; i++)
-    {
-        if (matrix_results[i].passed)
-            matrix_passed++;
-    }
-    
-    // In a real application, you'd output these results somehow
-    // Total tests: 9 scalar + 3 vector + 1 matrix = 13 tests
 }
