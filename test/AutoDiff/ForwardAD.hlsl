@@ -232,13 +232,13 @@ template<typename T, typename L, typename R>
 struct PowExpr
 {
     using ResultType = Value<T>;
-    L base;
-    R exponent;
+    L left;
+    R right;
 
     Value<T> eval()
     {
-        Value<T> b_val = __detail::getValue(base);
-        Value<T> e_val = __detail::getValue(exponent);
+        Value<T> b_val = __detail::getValue(left);
+        Value<T> e_val = __detail::getValue(right);
         // Power rule: (f^g)' = f^g * (g' * ln(f) + g * f'/f)
         T pow_val = pow(b_val.value, e_val.value);
         T deriv = pow_val * (e_val.derivative * log(b_val.value) +
@@ -342,48 +342,6 @@ struct SqrtExpr
     }
 };
 
-// Helper functions to create templated expression templates - using macros to reduce duplication
-
-#define MAKE_BINARY_EXPR(ExprType) \
-template<typename T, typename L, typename R> \
-ExprType<T, L, R> make##ExprType(L left, R right) \
-{ \
-    ExprType<T, L, R> result; \
-    result.left = left; \
-    result.right = right; \
-    return result; \
-}
-
-MAKE_BINARY_EXPR(AddExpr)
-MAKE_BINARY_EXPR(SubExpr)
-MAKE_BINARY_EXPR(MulExpr)
-MAKE_BINARY_EXPR(DivExpr)
-
-template<typename T, typename L, typename R>
-PowExpr<T, L, R> makePowExpr(L base, R exponent)
-{
-    PowExpr<T, L, R> result;
-    result.base = base;
-    result.exponent = exponent;
-    return result;
-}
-
-#define MAKE_UNARY_EXPR(ExprType) \
-template<typename T, typename E> \
-ExprType<T, E> make##ExprType(E expr) \
-{ \
-    ExprType<T, E> result; \
-    result.expr = expr; \
-    return result; \
-}
-
-MAKE_UNARY_EXPR(NegExpr)
-MAKE_UNARY_EXPR(SinExpr)
-MAKE_UNARY_EXPR(CosExpr)
-MAKE_UNARY_EXPR(ExpExpr)
-MAKE_UNARY_EXPR(LogExpr)
-MAKE_UNARY_EXPR(SqrtExpr)
-
 // ============================================================================
 // Named Functions for Operations with Type Support
 // ============================================================================
@@ -391,58 +349,64 @@ MAKE_UNARY_EXPR(SqrtExpr)
 // Templated operation functions - using macro to reduce duplication
 #define MAKE_BINARY_OP(opName, ExprType) \
 template<typename T, typename L, typename R> \
+ExprType<T, L, R> make##ExprType(L left, R right) \
+{ \
+    ExprType<T, L, R> result; \
+    result.left = left; \
+    result.right = right; \
+    return result; \
+} \
+namespace __detail { \
+template<typename T, typename L, typename R> \
 ExprType<T, L, R> opName(L left, R right) \
 { \
     return make##ExprType<T>(left, right); \
+} \
+} /* namespace __detail */ \
+template<typename T> \
+Value<T> opName(Value<T> left, Value<T> right) \
+{ \
+    return __detail::opName<T>(left, right).eval(); \
+} \
+template<typename T, typename E> \
+typename hlsl::enable_if<hlsl::is_arithmetic<E>::value, Value<T> >::type \
+opName(Value<T> left, E right) \
+{ \
+    return __detail::opName<T>(left, right).eval(); \
+} \
+template<typename T, typename E> \
+typename hlsl::enable_if<hlsl::is_arithmetic<E>::value, Value<T> >::type opName(E left, Value<T> right) \
+{ \
+    return __detail::opName<T>(left, right).eval(); \
 }
 
 MAKE_BINARY_OP(add, AddExpr)
 MAKE_BINARY_OP(subtract, SubExpr)
 MAKE_BINARY_OP(multiply, MulExpr)
 MAKE_BINARY_OP(divide, DivExpr)
-MAKE_BINARY_OP(power, PowExpr)
+MAKE_BINARY_OP(pow, PowExpr)
 
-template<typename T>
-Value<T> pow(Value<T> base, Value<T> exponent)
-{
-    return power<T>(base, exponent).eval();
-}
-
-template<typename T, typename E>
-typename hlsl::enable_if<hlsl::is_arithmetic<E>::value, Value<T> >::type
-pow(Value<T> base, E exponent)
-{
-    return power<T>(base, exponent).eval();
-}
-
-template<typename T, typename E>
-typename hlsl::enable_if<hlsl::is_arithmetic<E>::value, Value<T> >::type pow(E base, Value<T> exponent)
-{
-    return power<T>(base, exponent).eval();
-}
-
+// Unary operation functions - using macro to reduce duplication
 #define MAKE_UNARY_OP(opName, ExprType) \
 template<typename T, typename E> \
-ExprType<T, E> opName(E expr) \
+ExprType<T, E> make##ExprType(E expr) \
+{ \
+    ExprType<T, E> result; \
+    result.expr = expr; \
+    return result; \
+} \
+template<typename T, typename E> \
+ExprType<T, E> opName##Expr(E expr) \
 { \
     return make##ExprType<T>(expr); \
 }
 
 MAKE_UNARY_OP(negate, NegExpr)
-
-// Mathematical Function Templates - using macros to reduce duplication
-#define MAKE_MATH_EXPR_OP(mathName, ExprType) \
-template<typename T, typename E> \
-ExprType<T, E> mathName##Expr(E expr) \
-{ \
-    return make##ExprType<T>(expr); \
-}
-
-MAKE_MATH_EXPR_OP(sin, SinExpr)
-MAKE_MATH_EXPR_OP(cos, CosExpr)
-MAKE_MATH_EXPR_OP(exp, ExpExpr)
-MAKE_MATH_EXPR_OP(log, LogExpr)
-MAKE_MATH_EXPR_OP(sqrt, SqrtExpr)
+MAKE_UNARY_OP(sin, SinExpr)
+MAKE_UNARY_OP(cos, CosExpr)
+MAKE_UNARY_OP(exp, ExpExpr)
+MAKE_UNARY_OP(log, LogExpr)
+MAKE_UNARY_OP(sqrt, SqrtExpr)
 
 // ============================================================================
 // Utility Functions

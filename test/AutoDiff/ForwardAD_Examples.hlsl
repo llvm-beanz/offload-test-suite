@@ -39,7 +39,7 @@ void ExampleTrigonometric()
     // Define the function: f(x) = sin(x) * cos(x) + exp(x)
     Value<float> sin_x = sinExpr<float>(x).eval();
     Value<float> cos_x = cosExpr<float>(x).eval();
-    Value<float> sin_cos = multiply<float>(sin_x, cos_x).eval();
+    Value<float> sin_cos = sin_x * cos_x;
     Value<float> exp_x = expExpr<float>(x).eval();
     Value<float> f = sin_cos + exp_x;
 
@@ -64,7 +64,7 @@ void ExampleDirectValue()
 #if __hlsl_dx_compiler
     // Unary operators are broken in DXC.
     // https://github.com/microsoft/DirectXShaderCompiler/issues/7944
-    Value<float> negated = negate<float>(x).eval();
+    Value<float> negated = negateExpr<float>(x).eval();
 #else
     Value<float> negated = -x;
 #endif
@@ -192,7 +192,7 @@ float NewtonMethod(float initial_guess)
         Value<float> x = variable<float>(x_current);
 
         // f(x) = x^3 - 2x - 5
-        Value<float> x_cubed = power<float>(x, constant<float>(3.0f)).eval();
+        Value<float> x_cubed = pow(x, constant<float>(3.0f));
         Value<float> two_x = x * 2.0f;
         Value<float> x_cubed_minus_2x = x_cubed - two_x;
         Value<float> f = x_cubed_minus_2x - 5.0f;
@@ -316,7 +316,7 @@ void ExampleTransformationPipeline()
     // Create 2D rotation matrix
     Value<float> cos_theta = cosExpr<float>(theta).eval();
     Value<float> sin_theta = sinExpr<float>(theta).eval();
-    Value<float> neg_sin = negate<float>(sin_theta).eval();
+    Value<float> neg_sin = negateExpr<float>(sin_theta).eval();
 
     // Rotation matrix [[cos θ, -sin θ], [sin θ, cos θ]]
     matrix<float, 2, 2> rot_val = matrix<float, 2, 2>(cos_theta.value, neg_sin.value,

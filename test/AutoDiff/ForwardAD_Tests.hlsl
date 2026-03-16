@@ -119,7 +119,7 @@ Value<float> TestQuotientRule(float input_x)
 Value<float> TestPowerRule(float input_x, float exponent)
 {
     Value<float> x = variable<float>(input_x);
-    Value<float> f = power<float>(x, constant<float>(exponent)).eval();
+    Value<float> f = pow(x, constant<float>(exponent));
     return f;
 }
 
