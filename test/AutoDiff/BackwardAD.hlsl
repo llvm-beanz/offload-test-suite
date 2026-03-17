@@ -641,7 +641,7 @@ struct BackMatVecMulExpr
 {
   using ElementType = typename hlsl::matrix_traits<M>::element_type;
   static const int Rows = hlsl::matrix_traits<M>::num_rows;
-  static const int Cols = hlsl::matrix_traits<M>::num_columns;
+  static const int Cols = hlsl::matrix_traits<M>::num_cols;
   using ValueType = V;
     L left;   // Matrix
     R right;  // Vector

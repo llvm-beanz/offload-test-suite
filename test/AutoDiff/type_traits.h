@@ -54,7 +54,7 @@ template <typename T> struct matrix_traits {
 template<typename T, int N, int M> struct matrix_traits<matrix<T, N, M> > {
   using element_type = T;
   static const int num_rows = N;
-  static const int num_columns = M;
+  static const int num_cols = M;
 };
 
 template <typename T> struct is_algebraic {
