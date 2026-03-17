@@ -4,6 +4,8 @@
 // Backward Automatic Differentiation Examples
 // ============================================================================
 
+using namespace ad::bwd;
+
 // Example 1: Simple function f(x) = x^2, f'(x) = 2x
 void ExampleSimpleQuadratic()
 {

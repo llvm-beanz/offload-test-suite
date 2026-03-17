@@ -4,6 +4,8 @@
 // Test Suite for Backward Automatic Differentiation
 // ============================================================================
 
+using namespace ad::bwd;
+
 // Structure to store individual test results
 struct BackADTestResult
 {
