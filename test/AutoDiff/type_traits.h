@@ -40,6 +40,18 @@ template <typename T, int N> struct is_vector<vector<T, N> > {
   static const bool value = true;
 };
 
+template <typename T> struct is_matrix {
+  static const bool value = false;
+};
+
+template <typename T, int N, int M> struct is_matrix<matrix<T, N, M> > {
+  static const bool value = true;
+};
+
+template <typename T> struct is_algebraic {
+  static const bool value = is_arithmetic<T>::value || is_vector<T>::value ||
+                            is_matrix<T>::value;
+};
 
 } // namespace hlsl
 
