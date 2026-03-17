@@ -22,6 +22,7 @@ storage for all intermediate variables.
 ### Utilities
 * [Type Traits](type_traits.h) - Traits for arithmetic, vector and matrix types.
 * [hlsl::enable_if](enable_if.h) - SFINAE primitive for `enable_if`.
+* [Matrix Utilities](matrix_utils.h) - Math utilities for working with matrices.
 
 ### Forward Differentiation
 

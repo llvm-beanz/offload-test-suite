@@ -3,6 +3,7 @@
 
 #include "type_traits.h"
 #include "enable_if.h"
+#include "matrix_utils.h"
 
 // This is a supplement for not having `auto`, which would be _really_ nice...
 #define AUTO_VAR(var,...) __decltype(__VA_ARGS__) var = __VA_ARGS__
@@ -100,63 +101,6 @@ namespace __detail {
     return; // No gradient on algebraic types.
   }
 
-  // Cofactor matrix helpers for determinant gradient (sizes 1x1 through 4x4)
-  // The cofactor matrix C[i][j] = (-1)^(i+j) * det(minor(i,j)).
-  // d(det(M))/dM = cofactor_matrix(M)
-
-  template<typename T>
-  matrix<T, 1, 1> cofactor_matrix(matrix<T, 1, 1> m) {
-    matrix<T, 1, 1> c;
-    c[0][0] = T(1);
-    return c;
-  }
-
-  template<typename T>
-  matrix<T, 2, 2> cofactor_matrix(matrix<T, 2, 2> m) {
-    matrix<T, 2, 2> c;
-    c[0][0] =  m[1][1];
-    c[0][1] = -m[1][0];
-    c[1][0] = -m[0][1];
-    c[1][1] =  m[0][0];
-    return c;
-  }
-
-  template<typename T>
-  matrix<T, 3, 3> cofactor_matrix(matrix<T, 3, 3> m) {
-    matrix<T, 3, 3> c;
-    c[0][0] =  determinant(matrix<T,2,2>(m[1][1], m[1][2], m[2][1], m[2][2]));
-    c[0][1] = -determinant(matrix<T,2,2>(m[1][0], m[1][2], m[2][0], m[2][2]));
-    c[0][2] =  determinant(matrix<T,2,2>(m[1][0], m[1][1], m[2][0], m[2][1]));
-    c[1][0] = -determinant(matrix<T,2,2>(m[0][1], m[0][2], m[2][1], m[2][2]));
-    c[1][1] =  determinant(matrix<T,2,2>(m[0][0], m[0][2], m[2][0], m[2][2]));
-    c[1][2] = -determinant(matrix<T,2,2>(m[0][0], m[0][1], m[2][0], m[2][1]));
-    c[2][0] =  determinant(matrix<T,2,2>(m[0][1], m[0][2], m[1][1], m[1][2]));
-    c[2][1] = -determinant(matrix<T,2,2>(m[0][0], m[0][2], m[1][0], m[1][2]));
-    c[2][2] =  determinant(matrix<T,2,2>(m[0][0], m[0][1], m[1][0], m[1][1]));
-    return c;
-  }
-
-  template<typename T>
-  matrix<T, 4, 4> cofactor_matrix(matrix<T, 4, 4> m) {
-    matrix<T, 4, 4> c;
-    c[0][0] =  determinant(matrix<T,3,3>(m[1][1], m[1][2], m[1][3], m[2][1], m[2][2], m[2][3], m[3][1], m[3][2], m[3][3]));
-    c[0][1] = -determinant(matrix<T,3,3>(m[1][0], m[1][2], m[1][3], m[2][0], m[2][2], m[2][3], m[3][0], m[3][2], m[3][3]));
-    c[0][2] =  determinant(matrix<T,3,3>(m[1][0], m[1][1], m[1][3], m[2][0], m[2][1], m[2][3], m[3][0], m[3][1], m[3][3]));
-    c[0][3] = -determinant(matrix<T,3,3>(m[1][0], m[1][1], m[1][2], m[2][0], m[2][1], m[2][2], m[3][0], m[3][1], m[3][2]));
-    c[1][0] = -determinant(matrix<T,3,3>(m[0][1], m[0][2], m[0][3], m[2][1], m[2][2], m[2][3], m[3][1], m[3][2], m[3][3]));
-    c[1][1] =  determinant(matrix<T,3,3>(m[0][0], m[0][2], m[0][3], m[2][0], m[2][2], m[2][3], m[3][0], m[3][2], m[3][3]));
-    c[1][2] = -determinant(matrix<T,3,3>(m[0][0], m[0][1], m[0][3], m[2][0], m[2][1], m[2][3], m[3][0], m[3][1], m[3][3]));
-    c[1][3] =  determinant(matrix<T,3,3>(m[0][0], m[0][1], m[0][2], m[2][0], m[2][1], m[2][2], m[3][0], m[3][1], m[3][2]));
-    c[2][0] =  determinant(matrix<T,3,3>(m[0][1], m[0][2], m[0][3], m[1][1], m[1][2], m[1][3], m[3][1], m[3][2], m[3][3]));
-    c[2][1] = -determinant(matrix<T,3,3>(m[0][0], m[0][2], m[0][3], m[1][0], m[1][2], m[1][3], m[3][0], m[3][2], m[3][3]));
-    c[2][2] =  determinant(matrix<T,3,3>(m[0][0], m[0][1], m[0][3], m[1][0], m[1][1], m[1][3], m[3][0], m[3][1], m[3][3]));
-    c[2][3] = -determinant(matrix<T,3,3>(m[0][0], m[0][1], m[0][2], m[1][0], m[1][1], m[1][2], m[3][0], m[3][1], m[3][2]));
-    c[3][0] = -determinant(matrix<T,3,3>(m[0][1], m[0][2], m[0][3], m[1][1], m[1][2], m[1][3], m[2][1], m[2][2], m[2][3]));
-    c[3][1] =  determinant(matrix<T,3,3>(m[0][0], m[0][2], m[0][3], m[1][0], m[1][2], m[1][3], m[2][0], m[2][2], m[2][3]));
-    c[3][2] = -determinant(matrix<T,3,3>(m[0][0], m[0][1], m[0][3], m[1][0], m[1][1], m[1][3], m[2][0], m[2][1], m[2][3]));
-    c[3][3] =  determinant(matrix<T,3,3>(m[0][0], m[0][1], m[0][2], m[1][0], m[1][1], m[1][2], m[2][0], m[2][1], m[2][2]));
-    return c;
-  }
 }
 
 
@@ -737,7 +681,7 @@ struct BackDetExpr
     void backward(inout GradientContext<M> context, ElementType gradient)
     {
         // d(det(M))/dM = cofactor_matrix(M)
-        __detail::backward(expr, context, __detail::cofactor_matrix(expr_val) * gradient);
+        __detail::backward(expr, context, ad::__detail::cofactor_matrix(expr_val) * gradient);
     }
 };
 

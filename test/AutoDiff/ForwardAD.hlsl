@@ -3,6 +3,7 @@
 
 #include "type_traits.h"
 #include "enable_if.h"
+#include "matrix_utils.h"
 
 namespace ad {
 namespace fwd {
@@ -577,7 +578,7 @@ struct TransposeExpr
     }
 };
 
-// Matrix Determinant Expression (generic for square matrices)
+// Matrix Determinant Expression (supports 1x1 through 4x4)
 template<typename T, int N, typename E>
 struct DetExpr
 {
@@ -588,24 +589,8 @@ struct DetExpr
     {
         Value<matrix<T, N, N> > val = __detail::getValue(expr);
 
-        // Determinant: d/dx[det(M)] = det(M) * tr(M^-1 * M')
-        // For simplicity, we'll use the fact that d/dx[det(M)] = det(M) * tr(adj(M)^T * M') / det(M) = tr(adj(M)^T * M')
         T det_val = determinant(val.value);
-
-        // This is a simplified derivative - full implementation would need adjugate matrix
-        // For 2x2: det([[a,b],[c,d]]) = ad - bc
-        // d_det = a'*d + a*d' - b'*c - b*c' (only valid for 2x2)
-        T deriv;
-        if (N == 2)
-        {
-            deriv = val.derivative[0][0] * val.value[1][1] + val.value[0][0] * val.derivative[1][1] -
-                    val.derivative[0][1] * val.value[1][0] - val.value[0][1] * val.derivative[1][0];
-        }
-        else
-        {
-            // For larger matrices, this is more complex - simplified approximation
-            deriv = (T)0;
-        }
+        T deriv = ad::__detail::det_deriv(val.value, val.derivative);
 
         return Value<T>::Create(det_val, deriv);
     }
