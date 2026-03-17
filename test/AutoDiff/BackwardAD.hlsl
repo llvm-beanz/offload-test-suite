@@ -567,17 +567,17 @@ struct BackCrossExpr
   using ValueType = T;
     L left;
     R right;
-    vector<T, 3> left_val;
-    vector<T, 3> right_val;
+    T left_val;
+    T right_val;
 
-    vector<T, 3> forward()
+    T forward()
     {
         left_val = __detail::forward(left);
         right_val = __detail::forward(right);
         return cross(left_val, right_val);
     }
 
-    void backward(inout GradientContext<vector<T, 3> > context, vector<T, 3> gradient)
+    void backward(inout GradientContext<T> context, T gradient)
     {
         // d(cross(u,v))/du = cross(gradient, v), d(cross(u,v))/dv = cross(u, gradient)
         __detail::backward(left, context, cross(gradient, right_val));
@@ -586,22 +586,23 @@ struct BackCrossExpr
 };
 
 // Vector Length
-template<typename T, int N, typename E>
+template<typename T, typename E>
 struct BackLengthExpr
 {
-  using ValueType = T;
+  using ElementType = typename hlsl::vector_traits<T>::element_type;
+  using ValueType = ElementType;
     E expr;
-    vector<T, N> expr_val;
-    T result_val;
+    T expr_val;
+    ElementType result_val;
 
-    T forward()
+    ElementType forward()
     {
         expr_val = __detail::forward(expr);
         result_val = length(expr_val);
         return result_val;
     }
 
-    void backward(inout GradientContext<vector<T, N> > context, T gradient)
+    void backward(inout GradientContext<T> context, ElementType gradient)
     {
         // d(|v|)/dv = v / |v|
         __detail::backward(expr, context, (expr_val / result_val) * gradient);
@@ -609,16 +610,17 @@ struct BackLengthExpr
 };
 
 // Vector Normalize
-template<typename T, int N, typename E>
+template<typename T, typename E>
 struct BackNormalizeExpr
 {
-  using ValueType = vector<T, N>;
+  using ElementType = typename hlsl::vector_traits<T>::element_type;
+  using ValueType = T;
     E expr;
-    vector<T, N> expr_val;
-    vector<T, N> result_val;
-    T length_val;
+    T expr_val;
+    T result_val;
+    ElementType length_val;
 
-    vector<T, N> forward()
+    T forward()
     {
         expr_val = __detail::forward(expr);
         length_val = length(expr_val);
@@ -626,12 +628,12 @@ struct BackNormalizeExpr
         return result_val;
     }
 
-    void backward(inout GradientContext<vector<T, N> > context, vector<T, N> gradient)
+    void backward(inout GradientContext<T> context, T gradient)
     {
         // d(normalize(v))/dv = (I - normalize(v) * normalize(v)^T) / |v|
         // Simplified: (gradient * length - result * dot(gradient, result)) / length
-        T dot_grad_result = dot(gradient, result_val);
-        vector<T, N> back_grad = (gradient * length_val - result_val * dot_grad_result) / length_val;
+        ElementType dot_grad_result = dot(gradient, result_val);
+        T back_grad = (gradient * length_val - result_val * dot_grad_result) / length_val;
         __detail::backward(expr, context, back_grad);
     }
 };
@@ -641,23 +643,26 @@ struct BackNormalizeExpr
 // ============================================================================
 
 // Matrix-Vector Multiplication
-template<typename T, int N, int K, typename L, typename R>
+template<typename M, typename V, typename L, typename R>
 struct BackMatVecMulExpr
 {
-  using ValueType = vector<T, N>;
-    L left;   // Matrix NxK
-    R right;  // Vector K
-    matrix<T, N, K> left_val;
-    vector<T, K> right_val;
+  using ElementType = typename hlsl::matrix_traits<M>::element_type;
+  static const int Rows = hlsl::matrix_traits<M>::num_rows;
+  static const int Cols = hlsl::matrix_traits<M>::num_columns;
+  using ValueType = V;
+    L left;   // Matrix
+    R right;  // Vector
+    M left_val;
+    vector<ElementType, Cols> right_val;
 
-    vector<T, N> forward()
+    V forward()
     {
         left_val = __detail::forward(left);
         right_val = __detail::forward(right);
         return mul(left_val, right_val);
     }
 
-    void backward(inout GradientContext<vector<T, N> > context, vector<T, N> gradient)
+    void backward(inout GradientContext<V> context, V gradient)
     {
         // d(A*v)/dA = v * gradient^T, d(A*v)/dv = A^T * gradient
         // For matrix gradient, we need a different context type - simplified here
@@ -666,24 +671,25 @@ struct BackMatVecMulExpr
 };
 
 // Matrix Determinant (2x2 only for simplicity)
-template<typename T, typename E>
+template<typename M, typename E>
 struct BackDet2x2Expr
 {
-  using ValueType = T;
+  using ElementType = typename hlsl::matrix_traits<M>::element_type;
+  using ValueType = ElementType;
     E expr;
-    matrix<T, 2, 2> expr_val;
+    M expr_val;
 
-    T forward()
+    ElementType forward()
     {
         expr_val = __detail::forward(expr);
         return determinant(expr_val);
     }
 
-    void backward(inout GradientContext<matrix<T, 2, 2> > context, T gradient)
+    void backward(inout GradientContext<M> context, ElementType gradient)
     {
         // d(det(M))/dM = adj(M)^T where adj is adjugate matrix
         // For 2x2: adj([[a,b],[c,d]]) = [[d,-b],[-c,a]]
-        matrix<T, 2, 2> adj_matrix;
+        M adj_matrix;
         adj_matrix[0][0] = expr_val[1][1];  // d
         adj_matrix[0][1] = -expr_val[0][1]; // -b
         adj_matrix[1][0] = -expr_val[1][0]; // -c
@@ -698,20 +704,20 @@ struct BackDet2x2Expr
 // ============================================================================
 
 // Create vector variable
-template<typename T, int N>
-Variable<vector<T, N> > variableVector(inout GradientContext<vector<T, N> > context, vector<T, N> value)
+template<typename T>
+Variable<T> variableVector(inout GradientContext<T> context, T value)
 {
-    Variable<vector<T, N> > var;
+    Variable<T> var;
     var.value = value;
     var.id = context.allocateVariable();
     return var;
 }
 
 // Create matrix variable
-template<typename T, int N, int M>
-Variable<matrix<T, N, M> > variableMatrix(inout GradientContext<matrix<T, N, M> > context, matrix<T, N, M> value)
+template<typename T>
+Variable<T> variableMatrix(inout GradientContext<T> context, T value)
 {
-    Variable<matrix<T, N, M> > var;
+    Variable<T> var;
     var.value = value;
     var.id = context.allocateVariable();
     return var;
@@ -741,10 +747,10 @@ BackCrossExpr<T, L, R> crossProduct(L left, R right)
 
 // Macro for vector unary operations
 #define MAKE_VECTOR_UNARY_OP_BACK(ExprType, funcName) \
-template<typename T, int N, typename E> \
-ExprType<T, N, E> funcName(E expr) \
+template<typename T, typename E> \
+ExprType<T, E> funcName(E expr) \
 { \
-    ExprType<T, N, E> result; \
+    ExprType<T, E> result; \
     result.expr = expr; \
     return result; \
 }
@@ -752,19 +758,19 @@ ExprType<T, N, E> funcName(E expr) \
 MAKE_VECTOR_UNARY_OP_BACK(BackLengthExpr, lengthExpr)
 MAKE_VECTOR_UNARY_OP_BACK(BackNormalizeExpr, normalizeExpr)
 
-template<typename T, int N, int K, typename L, typename R>
-BackMatVecMulExpr<T, N, K, L, R> matVecMul(L left, R right)
+template<typename M, typename V, typename L, typename R>
+BackMatVecMulExpr<M, V, L, R> matVecMul(L left, R right)
 {
-    BackMatVecMulExpr<T, N, K, L, R> expr;
+    BackMatVecMulExpr<M, V, L, R> expr;
     expr.left = left;
     expr.right = right;
     return expr;
 }
 
-template<typename T, typename E>
-BackDet2x2Expr<T, E> determinantExpr(E expr)
+template<typename M, typename E>
+BackDet2x2Expr<M, E> determinantExpr(E expr)
 {
-    BackDet2x2Expr<T, E> result;
+    BackDet2x2Expr<M, E> result;
     result.expr = expr;
     return result;
 }
@@ -787,23 +793,25 @@ typename hlsl::vector_traits<T>::element_type compute_gradients(inout GradientCo
 }
 
 template<typename T, typename L, typename R>
-vector<T, 3> compute_gradients(inout GradientContext<vector<T, 3> > context, BackCrossExpr<T, L, R> expr)
+T compute_gradients(inout GradientContext<T> context, BackCrossExpr<T, L, R> expr)
 {
+    using ElementType = typename hlsl::vector_traits<T>::element_type;
     context.zeroGradients();
-    vector<T, 3> result = expr.forward();
-    vector<T, 3> seed = { (T)1, (T)1, (T)1 };
+    T result = expr.forward();
+    T seed = (T)1;
     expr.backward(context, seed);
     return result;
 }
 
-// Macro for vector unary compute_gradients with T return type
+// Macro for vector unary compute_gradients with scalar return type
 #define MAKE_VECTOR_COMPUTE_GRADIENTS_SCALAR(ExprType) \
-template<typename T, int N, typename E> \
-T compute_gradients(inout GradientContext<vector<T, N> > context, ExprType<T, N, E> expr) \
+template<typename T, typename E> \
+typename hlsl::vector_traits<T>::element_type compute_gradients(inout GradientContext<T> context, ExprType<T, E> expr) \
 { \
+    using ElementType = typename hlsl::vector_traits<T>::element_type; \
     context.zeroGradients(); \
-    T result = expr.forward(); \
-    expr.backward(context, (T)1); \
+    ElementType result = expr.forward(); \
+    expr.backward(context, (ElementType)1); \
     return result; \
 }
 
@@ -811,47 +819,54 @@ MAKE_VECTOR_COMPUTE_GRADIENTS_SCALAR(BackLengthExpr)
 
 // Macro for vector unary compute_gradients with vector return type
 #define MAKE_VECTOR_COMPUTE_GRADIENTS_VECTOR(ExprType) \
-template<typename T, int N, typename E> \
-vector<T, N> compute_gradients(inout GradientContext<vector<T, N> > context, ExprType<T, N, E> expr) \
+template<typename T, typename E> \
+T compute_gradients(inout GradientContext<T> context, ExprType<T, E> expr) \
 { \
+    using ElementType = typename hlsl::vector_traits<T>::element_type; \
+    static const int N = hlsl::vector_traits<T>::num_elements; \
     context.zeroGradients(); \
-    vector<T, N> result = expr.forward(); \
-    vector<T, N> seed = (vector<T, N>)0; \
-    if (N >= 1) seed[0] = (T)1; \
+    T result = expr.forward(); \
+    T seed = (T)0; \
+    if (N >= 1) seed[0] = (ElementType)1; \
     expr.backward(context, seed); \
     return result; \
 }
 
 MAKE_VECTOR_COMPUTE_GRADIENTS_VECTOR(BackNormalizeExpr)
 
-template<typename T, int N, int K, typename L, typename R>
-vector<T, N> compute_gradients(inout GradientContext<vector<T, N> > context, BackMatVecMulExpr<T, N, K, L, R> expr)
+template<typename M, typename V, typename L, typename R>
+V compute_gradients(inout GradientContext<V> context, BackMatVecMulExpr<M, V, L, R> expr)
 {
+    using ElementType = typename hlsl::vector_traits<V>::element_type;
+    static const int N = hlsl::vector_traits<V>::num_elements;
     context.zeroGradients();
-    vector<T, N> result = expr.forward();
-    vector<T, N> seed = (vector<T, N>)0;
-    if (N >= 1) seed[0] = (T)1;
+    V result = expr.forward();
+    V seed = (V)0;
+    if (N >= 1) seed[0] = (ElementType)1;
     expr.backward(context, seed);
     return result;
 }
 
-template<typename T, typename E>
-T compute_gradients(inout GradientContext<matrix<T, 2, 2> > context, BackDet2x2Expr<T, E> expr)
+template<typename M, typename E>
+typename hlsl::matrix_traits<M>::element_type compute_gradients(inout GradientContext<M> context, BackDet2x2Expr<M, E> expr)
 {
+    using ElementType = typename hlsl::matrix_traits<M>::element_type;
     context.zeroGradients();
-    T result = expr.forward();
-    expr.backward(context, (T)1);
+    ElementType result = expr.forward();
+    expr.backward(context, (ElementType)1);
     return result;
 }
 
 // Additional overload for matrix-vector multiplication with matrix context
-template<typename T, int N, int K, typename L, typename R>
-vector<T, N> compute_gradients(inout GradientContext<matrix<T, N, K> > context, BackMatVecMulExpr<T, N, K, L, R> expr)
+template<typename M, typename V, typename L, typename R>
+V compute_gradients(inout GradientContext<M> context, BackMatVecMulExpr<M, V, L, R> expr)
 {
+    using ElementType = typename hlsl::vector_traits<V>::element_type;
+    static const int N = hlsl::vector_traits<V>::num_elements;
     context.zeroGradients();
-    vector<T, N> result = expr.forward();
-    vector<T, N> seed = (vector<T, N>)0;
-    if (N >= 1) seed[0] = (T)1;
+    V result = expr.forward();
+    V seed = (V)0;
+    if (N >= 1) seed[0] = (ElementType)1;
     expr.backward(context, seed);
     return result;
 }

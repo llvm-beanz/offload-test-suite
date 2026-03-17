@@ -48,6 +48,15 @@ template <typename T, int N, int M> struct is_matrix<matrix<T, N, M> > {
   static const bool value = true;
 };
 
+template <typename T> struct matrix_traits {
+};
+
+template<typename T, int N, int M> struct matrix_traits<matrix<T, N, M> > {
+  using element_type = T;
+  static const int num_rows = N;
+  static const int num_columns = M;
+};
+
 template <typename T> struct is_algebraic {
   static const bool value = is_arithmetic<T>::value || is_vector<T>::value ||
                             is_matrix<T>::value;
