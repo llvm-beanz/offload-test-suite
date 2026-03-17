@@ -8,7 +8,7 @@ Buffers:
   # Input buffer containing test parameters for 8 threads
   - Name: InputBuffer
     Format: Float32
-    Stride: 172  # BackADTestInputs struct size: 43 floats = 172 bytes
+    Stride: 212  # BackADTestInputs struct size: 53 floats = 212 bytes
     Data: [
       # Thread 0: Basic values
       3.0,   # quadratic_x
@@ -54,6 +54,16 @@ Buffers:
       3.0,   # matvec_m11
       1.0,   # matvec_vx
       2.0,   # matvec_vy
+      5.0,   # det1x1_a
+      1.0,   # det3x3_m00
+      2.0,   # det3x3_m01
+      3.0,   # det3x3_m02
+      0.0,   # det3x3_m10
+      1.0,   # det3x3_m11
+      4.0,   # det3x3_m12
+      5.0,   # det3x3_m20
+      6.0,   # det3x3_m21
+      0.0,   # det3x3_m22
 
       # Thread 1: Positive values
       1.0,   # quadratic_x
@@ -99,6 +109,16 @@ Buffers:
       4.0,   # matvec_m11
       2.0,   # matvec_vx
       3.0,   # matvec_vy
+      3.0,   # det1x1_a
+      2.0,   # det3x3_m00
+      0.0,   # det3x3_m01
+      1.0,   # det3x3_m02
+      3.0,   # det3x3_m10
+      1.0,   # det3x3_m11
+      0.0,   # det3x3_m12
+      0.0,   # det3x3_m20
+      2.0,   # det3x3_m21
+      1.0,   # det3x3_m22
 
       # Thread 2: Trigonometric angles
       2.0,          # quadratic_x
@@ -144,6 +164,16 @@ Buffers:
       1.0,          # matvec_m11
       4.0,          # matvec_vx
       1.0,          # matvec_vy
+      7.0,          # det1x1_a
+      1.0,          # det3x3_m00
+      0.0,          # det3x3_m01
+      0.0,          # det3x3_m02
+      0.0,          # det3x3_m10
+      1.0,          # det3x3_m11
+      0.0,          # det3x3_m12
+      0.0,          # det3x3_m20
+      0.0,          # det3x3_m21
+      1.0,          # det3x3_m22
 
       # Thread 3: Small values
       0.5,   # quadratic_x
@@ -189,6 +219,16 @@ Buffers:
       3.0,   # matvec_m11
       0.5,   # matvec_vx
       1.0,   # matvec_vy
+      0.5,   # det1x1_a
+      1.0,   # det3x3_m00
+      2.0,   # det3x3_m01
+      0.0,   # det3x3_m02
+      0.0,   # det3x3_m10
+      1.0,   # det3x3_m11
+      0.0,   # det3x3_m12
+      0.0,   # det3x3_m20
+      0.0,   # det3x3_m21
+      1.0,   # det3x3_m22
 
       # Thread 4: Larger values
       5.0,   # quadratic_x
@@ -234,6 +274,16 @@ Buffers:
       2.0,   # matvec_m11
       3.0,   # matvec_vx
       4.0,   # matvec_vy
+      10.0,  # det1x1_a
+      3.0,   # det3x3_m00
+      1.0,   # det3x3_m01
+      2.0,   # det3x3_m02
+      0.0,   # det3x3_m10
+      4.0,   # det3x3_m11
+      1.0,   # det3x3_m12
+      5.0,   # det3x3_m20
+      0.0,   # det3x3_m21
+      3.0,   # det3x3_m22
 
       # Thread 5: Mixed signs
       -2.0,  # quadratic_x
@@ -279,6 +329,16 @@ Buffers:
       -4.0,  # matvec_m11
       1.0,   # matvec_vx
       -2.0,  # matvec_vy
+      -2.0,  # det1x1_a
+      -1.0,  # det3x3_m00
+      2.0,   # det3x3_m01
+      1.0,   # det3x3_m02
+      3.0,   # det3x3_m10
+      -2.0,  # det3x3_m11
+      0.0,   # det3x3_m12
+      1.0,   # det3x3_m20
+      1.0,   # det3x3_m21
+      -1.0,  # det3x3_m22
 
       # Thread 6: Pi-related
       4.0,          # quadratic_x
@@ -324,6 +384,16 @@ Buffers:
       5.0,          # matvec_m11
       2.0,          # matvec_vx
       -1.0,         # matvec_vy
+      4.0,          # det1x1_a
+      2.0,          # det3x3_m00
+      1.0,          # det3x3_m01
+      0.0,          # det3x3_m02
+      1.0,          # det3x3_m10
+      3.0,          # det3x3_m11
+      1.0,          # det3x3_m12
+      0.0,          # det3x3_m20
+      1.0,          # det3x3_m21
+      2.0,          # det3x3_m22
 
       # Thread 7: Edge-ish values
       0.1,   # quadratic_x
@@ -369,13 +439,23 @@ Buffers:
       1.0,   # matvec_m11
       1.0,   # matvec_vx
       1.0,   # matvec_vy
+      1.0,   # det1x1_a
+      1.0,   # det3x3_m00
+      0.0,   # det3x3_m01
+      0.0,   # det3x3_m02
+      0.0,   # det3x3_m10
+      2.0,   # det3x3_m11
+      0.0,   # det3x3_m12
+      0.0,   # det3x3_m20
+      0.0,   # det3x3_m21
+      3.0,   # det3x3_m22
     ]
 
   # Output buffer for computed results (8 threads x 20 tests)
   - Name: ResultBuffer
     Format: Float32
     Stride: 8  # BackADTestResult struct: 2 floats = 8 bytes
-    FillSize: 1280  # 8 threads * 20 tests * 8 bytes = 1280 bytes
+    FillSize: 1408  # 8 threads * 22 tests * 8 bytes = 1408 bytes
 
   # Expected results for validation (8 threads x 20 tests each)
   - Name: ExpectedResults
@@ -403,6 +483,8 @@ Buffers:
       0.6, 0.928,      # Test 17: Normalize -> normalize([3,4])[0]=0.6, df/dv[0]=1-(3/5)^2=0.928
       0.0, -1.0,       # Test 18: Cross -> cross([1,0,0],[0,1,0])[0]=0, df/du[0]=-1
       4.0, 2.0,        # Test 19: MatVecMul -> ([[2,1],[0,3]]*[1,2])[0]=4, df/dv[0]=2
+      5.0, 1.0,        # Test 20: Det1x1 det([[5]])=5, df/dM[0][0]=1
+      1.0, -24.0,      # Test 21: Det3x3 det([[1,2,3],[0,1,4],[5,6,0]])=1, cof(0,0)=1*0-4*6=-24
 
       # Thread 1: Positive values
       1.0, 2.0,                      # Test 0: Quadratic f(1)=1, f'(1)=2
@@ -425,6 +507,8 @@ Buffers:
       0.707106781, 0.646446609,      # Test 17: Normalize normalize([1,1])[0]=1/sqrt(2), df/dv[0]=1-(1/sqrt(2))^2=0.5
       -3.0, 1.0,                     # Test 18: Cross cross([1,2,3],[4,5,6])[0]=2*6-3*5=-3, df/du[0]=6-5=1
       9.0, 3.0,                      # Test 19: MatVecMul ([[3,1],[2,4]]*[2,3])[0]=9, df/dv[0]=3
+      3.0, 1.0,                      # Test 20: Det1x1 det([[3]])=3, df/dM[0][0]=1
+      8.0, 1.0,                      # Test 21: Det3x3 det([[2,0,1],[3,1,0],[0,2,1]])=8, cof(0,0)=1*1-0*2=1
 
       # Thread 2: Trigonometric angles
       4.0, 4.0,                       # Test 0: Quadratic f(2)=4, f'(2)=4
@@ -447,6 +531,8 @@ Buffers:
       0.6, 0.928,                      # Test 17: Normalize normalize([3,4])[0]=0.6, df/dv[0]=1-(3/5)^2=0.928
       7.0, 1.0,                        # Test 18: Cross cross([2,3,1],[1,2,3])[0]=3*3-1*2=7, df/du[0]=3-2=1
       6.0, 1.0,                        # Test 19: MatVecMul ([[1,2],[3,1]]*[4,1])[0]=6, df/dv[0]=1
+      7.0, 1.0,                        # Test 20: Det1x1 det([[7]])=7, df/dM[0][0]=1
+      1.0, 1.0,                        # Test 21: Det3x3 det(I)=1, cof(0,0)=1
 
       # Thread 3: Small values
       0.25, 1.0,                       # Test 0: Quadratic f(0.5)=0.25, f'=1
@@ -469,6 +555,8 @@ Buffers:
       0.6, 0.64,                       # Test 17: Normalize normalize([0.6,0.8])[0]=0.6, df/dv[0]=1-0.36=0.64
       1.0, 1.0,                        # Test 18: Cross cross([0,1,0],[0,0,1])[0]=1*1-0*0=1, df/du[0]=1-0=1
       4.0, 4.0,                        # Test 19: MatVecMul ([[4,2],[1,3]]*[0.5,1])[0]=4, df/dv[0]=4
+      0.5, 1.0,                        # Test 20: Det1x1 det([[0.5]])=0.5, df/dM[0][0]=1
+      1.0, 1.0,                        # Test 21: Det3x3 det([[1,2,0],[0,1,0],[0,0,1]])=1, cof(0,0)=1
 
       # Thread 4: Larger values
       25.0, 10.0,                      # Test 0: Quadratic f(5)=25, f'=10
@@ -491,6 +579,8 @@ Buffers:
       0.384615385, 0.988621440,        # Test 17: Normalize normalize([5,12])[0], df/dv[0]=1-(5/13)^2
       1.0, 1.0,                        # Test 18: Cross cross([3,1,4],[2,0,1])[0]=1*1-4*0=1, df/du[0]=1-0=1
       27.0, 5.0,                       # Test 19: MatVecMul ([[5,3],[1,2]]*[3,4])[0]=27, df/dv[0]=5
+      10.0, 1.0,                       # Test 20: Det1x1 det([[10]])=10, df/dM[0][0]=1
+      1.0, 12.0,                       # Test 21: Det3x3 det([[3,1,2],[0,4,1],[5,0,3]])=1, cof(0,0)=4*3-1*0=12
 
       # Thread 5: Mixed signs
       4.0, -4.0,                       # Test 0: Quadratic f(-2)=4, f'(-2)=-4
@@ -513,6 +603,8 @@ Buffers:
       -0.6, 0.928,                     # Test 17: Normalize normalize([-3,4])[0]=-0.6, df/dv[0]=1-(-3/5)^2=0.928
       -3.0, -11.0,                     # Test 18: Cross cross([1,-2,3],[4,5,-6])[0]=-2*(-6)-3*5=-3, df/du[0]=(-6)-5=-11
       -7.0, -1.0,                      # Test 19: MatVecMul ([[-1,3],[2,-4]]*[1,-2])[0]=-7, df/dv[0]=-1
+      -2.0, 1.0,                       # Test 20: Det1x1 det([[-2]])=-2, df/dM[0][0]=1
+      9.0, 2.0,                        # Test 21: Det3x3 det([[-1,2,1],[3,-2,0],[1,1,-1]])=9, cof(0,0)=(-2)(-1)-0*1=2
 
       # Thread 6: Pi-related
       16.0, 8.0,                       # Test 0: Quadratic f(4)=16, f'=8
@@ -535,6 +627,8 @@ Buffers:
       -0.707106781, 0.646446609,       # Test 17: Normalize normalize([-1,-1])[0], df/dv[0]=1-(-1/sqrt(2))^2=0.5
       -3.0, 11.0,                      # Test 18: Cross cross([-1,2,-3],[4,-5,6])[0]=2*6-(-3)*(-5)=-3, df/du[0]=6-(-5)=11
       5.0, 2.0,                        # Test 19: MatVecMul ([[2,-1],[3,5]]*[2,-1])[0]=5, df/dv[0]=2
+      4.0, 1.0,                        # Test 20: Det1x1 det([[4]])=4, df/dM[0][0]=1
+      8.0, 5.0,                        # Test 21: Det3x3 det([[2,1,0],[1,3,1],[0,1,2]])=8, cof(0,0)=3*2-1*1=5
 
       # Thread 7: Edge-ish values
       0.01, 0.2,                       # Test 0: Quadratic f(0.1)=0.01, f'=0.2
@@ -557,6 +651,8 @@ Buffers:
       1.0, 0.0,                        # Test 17: Normalize normalize([1,0])[0]=1, df/dv[0]=1-1=0
       0.0, 1.0,                        # Test 18: Cross cross([1,0,0],[0,0,1])[0]=0*1-0*0=0, df/du[0]=1-0=1
       1.0, 1.0,                        # Test 19: MatVecMul ([[1,0],[0,1]]*[1,1])[0]=1, df/dv[0]=1
+      1.0, 1.0,                        # Test 20: Det1x1 det([[1]])=1, df/dM[0][0]=1
+      6.0, 6.0,                        # Test 21: Det3x3 det([[1,0,0],[0,2,0],[0,0,3]])=6, cof(0,0)=2*3-0*0=6
     ]
 
 DescriptorSets:

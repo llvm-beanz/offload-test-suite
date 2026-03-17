@@ -229,7 +229,7 @@ void ExampleVectorDotProduct()
     context.variable_count = 0;
 
     // Variable vector u = [2, 3]
-    Variable<float2> u = variableVector<float2>(context, float2(2.0f, 3.0f));
+    Variable<float2> u = variable<float2>(context, float2(2.0f, 3.0f));
     VariableExpr<float2> u_expr;
     u_expr.var = u;
 
@@ -252,16 +252,16 @@ void ExampleVectorDotProduct()
 // f(v) = length(v), g(v) = normalize(v)
 void ExampleVectorLengthNormalize()
 {
-    GradientContext<float3 > context;
+    GradientContext<float3> context;
     context.variable_count = 0;
 
     // Variable vector v = [3, 4, 0] (length = 5)
-    Variable<float3 > v = variableVector<float3 >(context, float3(3.0f, 4.0f, 0.0f));
-    VariableExpr<float3 > v_expr;
+    Variable<float3> v = variable<float3>(context, float3(3.0f, 4.0f, 0.0f));
+    VariableExpr<float3> v_expr;
     v_expr.var = v;
 
     // f(v) = |v|
-    AUTO_VAR(length_expr, (lengthExpr<float3 >(v_expr)));
+    AUTO_VAR(length_expr, (lengthExpr<float3>(v_expr)));
     float length_value = compute_gradients(context, length_expr);
     float3 length_gradient = v.gradient(context);
 
@@ -270,11 +270,11 @@ void ExampleVectorLengthNormalize()
 
     // Reset gradients for next computation
     context.variable_count = 0;
-    v = variableVector<float3 >(context, float3(3.0f, 4.0f, 0.0f));
+    v = variable<float3>(context, float3(3.0f, 4.0f, 0.0f));
     v_expr.var = v;
 
     // g(v) = normalize(v)
-    AUTO_VAR(normalize_expr, (normalizeExpr<float3 >(v_expr)));
+    AUTO_VAR(normalize_expr, (normalizeExpr<float3>(v_expr)));
     float3 normalized_value = compute_gradients(context, normalize_expr);
     float3 normalize_gradient = v.gradient(context);
 
@@ -286,21 +286,21 @@ void ExampleVectorLengthNormalize()
 // f(u,v) = cross(u,v)
 void ExampleVectorCrossProduct()
 {
-    GradientContext<float3 > context;
+    GradientContext<float3> context;
     context.variable_count = 0;
 
     // Variable vector u = [1, 0, 0]
-    Variable<float3 > u = variableVector<float3 >(context, float3(1.0f, 0.0f, 0.0f));
-    VariableExpr<float3 > u_expr;
+    Variable<float3> u = variable<float3>(context, float3(1.0f, 0.0f, 0.0f));
+    VariableExpr<float3> u_expr;
     u_expr.var = u;
 
     // Constant vector v = [0, 1, 0]
-    VariableExpr<float3 > v_expr;
+    VariableExpr<float3> v_expr;
     v_expr.var.value = float3(0.0f, 1.0f, 0.0f);
     v_expr.var.id = -1; // Constant
 
     // f(u,v) = cross(u,v) = [0, 0, 1]
-    AUTO_VAR(f, crossProduct<float3 >(u_expr, v_expr));
+    AUTO_VAR(f, crossProduct<float3>(u_expr, v_expr));
 
     float3 result = compute_gradients(context, f);
     float3 gradient = u.gradient(context);
@@ -325,7 +325,7 @@ void ExampleMatrixVectorMultiply()
     M_expr.var.id = -1; // Constant
 
     // Variable vector v = [1, 2]
-    Variable<float2> v = variableVector<float2>(context, float2(1.0f, 2.0f));
+    Variable<float2> v = variable<float2>(context, float2(1.0f, 2.0f));
     VariableExpr<float2> v_expr;
     v_expr.var = v;
 
@@ -347,7 +347,7 @@ void ExampleMatrixDeterminant()
     context.variable_count = 0;
 
     // Variable matrix M = [[3, 1], [2, 4]]
-    Variable<float2x2> M = variableMatrix<float2x2>(context, float2x2(3, 1, 2, 4));
+    Variable<float2x2> M = variable<float2x2>(context, float2x2(3, 1, 2, 4));
     VariableExpr<float2x2> M_expr;
     M_expr.var = M;
 
@@ -377,7 +377,7 @@ void ExampleVectorOptimization()
         GradientContext<float2> context;
         context.variable_count = 0;
 
-        Variable<float2> x = variableVector<float2>(context, x_val);
+        Variable<float2> x = variable<float2>(context, x_val);
         VariableExpr<float2> x_expr;
         x_expr.var = x;
 

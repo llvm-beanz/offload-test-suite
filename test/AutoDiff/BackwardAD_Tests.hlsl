@@ -68,6 +68,20 @@ struct BackADTestInputs
     float matvec_m11;
     float matvec_vx;
     float matvec_vy;
+
+    // 1x1 determinant test
+    float det1x1_a;
+
+    // 3x3 determinant test
+    float det3x3_m00;
+    float det3x3_m01;
+    float det3x3_m02;
+    float det3x3_m10;
+    float det3x3_m11;
+    float det3x3_m12;
+    float det3x3_m20;
+    float det3x3_m21;
+    float det3x3_m22;
 };
 
 // Input buffer to receive test parameters from CPU
@@ -264,7 +278,7 @@ BackADTestResult TestBackwardVectorDot(float ux, float uy, float vx, float vy)
     GradientContext<float2> context;
     context.variable_count = 0;
 
-    Variable<float2> u = variableVector<float2>(context, float2(ux, uy));
+    Variable<float2> u = variable<float2>(context, float2(ux, uy));
     VariableExpr<float2> u_expr;
     u_expr.var = u;
 
@@ -287,7 +301,7 @@ BackADTestResult TestBackwardVectorLength(float vx, float vy)
     GradientContext<float2> context;
     context.variable_count = 0;
 
-    Variable<float2> v = variableVector<float2>(context, float2(vx, vy));
+    Variable<float2> v = variable<float2>(context, float2(vx, vy));
     VariableExpr<float2> v_expr;
     v_expr.var = v;
 
@@ -306,7 +320,7 @@ BackADTestResult TestBackwardMatrixDeterminant(float a, float b, float c, float 
     GradientContext<float2x2 > context;
     context.variable_count = 0;
 
-    Variable<float2x2 > M = variableMatrix<float2x2 >(context, float2x2(a, b, c, d));
+    Variable<float2x2 > M = variable<float2x2 >(context, float2x2(a, b, c, d));
     VariableExpr<float2x2 > M_expr;
     M_expr.var = M;
 
@@ -394,7 +408,7 @@ BackADTestResult TestBackwardNormalize(float vx, float vy)
     GradientContext<float2> context;
     context.variable_count = 0;
 
-    Variable<float2> v = variableVector<float2>(context, float2(vx, vy));
+    Variable<float2> v = variable<float2>(context, float2(vx, vy));
     VariableExpr<float2> v_expr;
     v_expr.var = v;
 
@@ -411,18 +425,18 @@ BackADTestResult TestBackwardNormalize(float vx, float vy)
 BackADTestResult TestBackwardCrossProduct(float ux, float uy, float uz, float vx, float vy, float vz)
 {
     BackADTestResult result;
-    GradientContext<float3 > context;
+    GradientContext<float3> context;
     context.variable_count = 0;
 
-    Variable<float3 > u = variableVector<float3 >(context, float3(ux, uy, uz));
-    VariableExpr<float3 > u_expr;
+    Variable<float3> u = variable<float3>(context, float3(ux, uy, uz));
+    VariableExpr<float3> u_expr;
     u_expr.var = u;
 
-    VariableExpr<float3 > v_expr;
+    VariableExpr<float3> v_expr;
     v_expr.var.value = float3(vx, vy, vz);
     v_expr.var.id = -1;
 
-    AUTO_VAR(f, crossProduct<float3 >(u_expr, v_expr));
+    AUTO_VAR(f, crossProduct<float3>(u_expr, v_expr));
 
     float3 fval = compute_gradients(context, f);
     result.value = fval.x;
@@ -439,7 +453,7 @@ BackADTestResult TestBackwardMatVecMul(float m00, float m01, float m10, float m1
     context.variable_count = 0;
 
     // Matrix is constant, vector is the variable
-    Variable<float2> v = variableVector<float2>(context, float2(vx, vy));
+    Variable<float2> v = variable<float2>(context, float2(vx, vy));
     VariableExpr<float2> v_expr;
     v_expr.var = v;
 
@@ -457,6 +471,49 @@ BackADTestResult TestBackwardMatVecMul(float m00, float m01, float m10, float m1
     return result;
 }
 
+// Test 20: f(M) = det(M) for 1x1, df/dM[0][0] = 1
+BackADTestResult TestBackwardDet1x1(float a)
+{
+    BackADTestResult result;
+    GradientContext<float1x1> context;
+    context.variable_count = 0;
+
+    Variable<float1x1> M = variable<float1x1>(context, float1x1(a));
+    VariableExpr<float1x1> M_expr;
+    M_expr.var = M;
+
+    AUTO_VAR(f, determinantExpr<float1x1>(M_expr));
+
+    result.value = compute_gradients(context, f);
+    float1x1 grad = M.gradient(context);
+    result.gradient = grad[0][0];
+    return result;
+}
+
+// Test 21: f(M) = det(M) for 3x3, df/dM[0][0] = cofactor(0,0)
+BackADTestResult TestBackwardDet3x3(float m00, float m01, float m02,
+                                     float m10, float m11, float m12,
+                                     float m20, float m21, float m22)
+{
+    BackADTestResult result;
+    GradientContext<float3x3> context;
+    context.variable_count = 0;
+
+    float3x3 mat = float3x3(m00, m01, m02,
+                             m10, m11, m12,
+                             m20, m21, m22);
+    Variable<float3x3> M = variable<float3x3>(context, mat);
+    VariableExpr<float3x3> M_expr;
+    M_expr.var = M;
+
+    AUTO_VAR(f, determinantExpr<float3x3>(M_expr));
+
+    result.value = compute_gradients(context, f);
+    float3x3 grad = M.gradient(context);
+    result.gradient = grad[0][0];
+    return result;
+}
+
 // ============================================================================
 // Compute Shader Entry Point
 // ============================================================================
@@ -470,7 +527,7 @@ void RunAllBackwardTests(uint3 DispatchThreadID : SV_DispatchThreadID)
     BackADTestInputs inputs = InputBuffer[threadIndex];
 
     // Collect all test results in local array
-    BackADTestResult results[20];
+    BackADTestResult results[22];
 
     // Test 0: Quadratic - f(x) = x^2
     results[0] = TestBackwardQuadratic(inputs.quadratic_x);
@@ -537,9 +594,17 @@ void RunAllBackwardTests(uint3 DispatchThreadID : SV_DispatchThreadID)
                                         inputs.matvec_m10, inputs.matvec_m11,
                                         inputs.matvec_vx, inputs.matvec_vy);
 
+    // Test 20: 1x1 Matrix Determinant
+    results[20] = TestBackwardDet1x1(inputs.det1x1_a);
+
+    // Test 21: 3x3 Matrix Determinant
+    results[21] = TestBackwardDet3x3(inputs.det3x3_m00, inputs.det3x3_m01, inputs.det3x3_m02,
+                                     inputs.det3x3_m10, inputs.det3x3_m11, inputs.det3x3_m12,
+                                     inputs.det3x3_m20, inputs.det3x3_m21, inputs.det3x3_m22);
+
     // Write all results to structured buffer at thread-specific indices
-    uint baseIndex = threadIndex * 20;
-    for (int i = 0; i < 20; i++)
+    uint baseIndex = threadIndex * 22;
+    for (int i = 0; i < 22; i++)
     {
         ResultBuffer[baseIndex + i] = results[i];
     }

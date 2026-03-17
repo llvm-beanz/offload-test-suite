@@ -97,6 +97,73 @@ namespace __detail {
   {
     return; // No gradient on algebraic types.
   }
+
+  // Cofactor matrix helpers for determinant gradient (sizes 1x1 through 4x4)
+  // The cofactor matrix C[i][j] = (-1)^(i+j) * det(minor(i,j)).
+  // d(det(M))/dM = cofactor_matrix(M)
+
+  template<typename T>
+  matrix<T, 1, 1> cofactor_matrix(matrix<T, 1, 1> m) {
+    matrix<T, 1, 1> c;
+    c[0][0] = T(1);
+    return c;
+  }
+
+  template<typename T>
+  matrix<T, 2, 2> cofactor_matrix(matrix<T, 2, 2> m) {
+    matrix<T, 2, 2> c;
+    c[0][0] =  m[1][1];
+    c[0][1] = -m[1][0];
+    c[1][0] = -m[0][1];
+    c[1][1] =  m[0][0];
+    return c;
+  }
+
+  template<typename T>
+  matrix<T, 3, 3> cofactor_matrix(matrix<T, 3, 3> m) {
+    matrix<T, 3, 3> c;
+    c[0][0] =  (m[1][1] * m[2][2] - m[1][2] * m[2][1]);
+    c[0][1] = -(m[1][0] * m[2][2] - m[1][2] * m[2][0]);
+    c[0][2] =  (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+    c[1][0] = -(m[0][1] * m[2][2] - m[0][2] * m[2][1]);
+    c[1][1] =  (m[0][0] * m[2][2] - m[0][2] * m[2][0]);
+    c[1][2] = -(m[0][0] * m[2][1] - m[0][1] * m[2][0]);
+    c[2][0] =  (m[0][1] * m[1][2] - m[0][2] * m[1][1]);
+    c[2][1] = -(m[0][0] * m[1][2] - m[0][2] * m[1][0]);
+    c[2][2] =  (m[0][0] * m[1][1] - m[0][1] * m[1][0]);
+    return c;
+  }
+
+  template<typename T>
+  T det3x3(T a00, T a01, T a02,
+           T a10, T a11, T a12,
+           T a20, T a21, T a22) {
+    return a00 * (a11 * a22 - a12 * a21)
+         - a01 * (a10 * a22 - a12 * a20)
+         + a02 * (a10 * a21 - a11 * a20);
+  }
+
+  template<typename T>
+  matrix<T, 4, 4> cofactor_matrix(matrix<T, 4, 4> m) {
+    matrix<T, 4, 4> c;
+    c[0][0] =  det3x3(m[1][1], m[1][2], m[1][3], m[2][1], m[2][2], m[2][3], m[3][1], m[3][2], m[3][3]);
+    c[0][1] = -det3x3(m[1][0], m[1][2], m[1][3], m[2][0], m[2][2], m[2][3], m[3][0], m[3][2], m[3][3]);
+    c[0][2] =  det3x3(m[1][0], m[1][1], m[1][3], m[2][0], m[2][1], m[2][3], m[3][0], m[3][1], m[3][3]);
+    c[0][3] = -det3x3(m[1][0], m[1][1], m[1][2], m[2][0], m[2][1], m[2][2], m[3][0], m[3][1], m[3][2]);
+    c[1][0] = -det3x3(m[0][1], m[0][2], m[0][3], m[2][1], m[2][2], m[2][3], m[3][1], m[3][2], m[3][3]);
+    c[1][1] =  det3x3(m[0][0], m[0][2], m[0][3], m[2][0], m[2][2], m[2][3], m[3][0], m[3][2], m[3][3]);
+    c[1][2] = -det3x3(m[0][0], m[0][1], m[0][3], m[2][0], m[2][1], m[2][3], m[3][0], m[3][1], m[3][3]);
+    c[1][3] =  det3x3(m[0][0], m[0][1], m[0][2], m[2][0], m[2][1], m[2][2], m[3][0], m[3][1], m[3][2]);
+    c[2][0] =  det3x3(m[0][1], m[0][2], m[0][3], m[1][1], m[1][2], m[1][3], m[3][1], m[3][2], m[3][3]);
+    c[2][1] = -det3x3(m[0][0], m[0][2], m[0][3], m[1][0], m[1][2], m[1][3], m[3][0], m[3][2], m[3][3]);
+    c[2][2] =  det3x3(m[0][0], m[0][1], m[0][3], m[1][0], m[1][1], m[1][3], m[3][0], m[3][1], m[3][3]);
+    c[2][3] = -det3x3(m[0][0], m[0][1], m[0][2], m[1][0], m[1][1], m[1][2], m[3][0], m[3][1], m[3][2]);
+    c[3][0] = -det3x3(m[0][1], m[0][2], m[0][3], m[1][1], m[1][2], m[1][3], m[2][1], m[2][2], m[2][3]);
+    c[3][1] =  det3x3(m[0][0], m[0][2], m[0][3], m[1][0], m[1][2], m[1][3], m[2][0], m[2][2], m[2][3]);
+    c[3][2] = -det3x3(m[0][0], m[0][1], m[0][3], m[1][0], m[1][1], m[1][3], m[2][0], m[2][1], m[2][3]);
+    c[3][3] =  det3x3(m[0][0], m[0][1], m[0][2], m[1][0], m[1][1], m[1][2], m[2][0], m[2][1], m[2][2]);
+    return c;
+  }
 }
 
 
@@ -425,17 +492,6 @@ VariableExpr<T> makeVariableExpr(Variable<T> var)
 }
 
 // Binary operations - using macros to reduce duplication
-#define MAKE_BINARY_BACK_EXPR(ExprType) \
-template<typename T, typename L, typename R> \
-ExprType<T, L, R> ExprType##LowerCase(L left, R right) \
-{ \
-    ExprType<T, L, R> expr; \
-    expr.left = left; \
-    expr.right = right; \
-    return expr; \
-}
-
-// Helper to convert ExprType to lowercase function name
 #define MAKE_BINARY_OP_BACK(ExprType, funcName) \
 template<typename T, typename L, typename R> \
 ExprType<T, L, R> funcName(L left, R right) \
@@ -670,9 +726,9 @@ struct BackMatVecMulExpr
     }
 };
 
-// Matrix Determinant (2x2 only for simplicity)
+// Matrix Determinant (square matrices 1x1 through 4x4)
 template<typename M, typename E>
-struct BackDet2x2Expr
+struct BackDetExpr
 {
   using ElementType = typename hlsl::matrix_traits<M>::element_type;
   using ValueType = ElementType;
@@ -687,63 +743,13 @@ struct BackDet2x2Expr
 
     void backward(inout GradientContext<M> context, ElementType gradient)
     {
-        // d(det(M))/dM = adj(M)^T where adj is adjugate matrix
-        // For 2x2: adj([[a,b],[c,d]]) = [[d,-b],[-c,a]]
-        M adj_matrix;
-        adj_matrix[0][0] = expr_val[1][1];  // d
-        adj_matrix[0][1] = -expr_val[0][1]; // -b
-        adj_matrix[1][0] = -expr_val[1][0]; // -c
-        adj_matrix[1][1] = expr_val[0][0];  // a
-
-        __detail::backward(expr, context, adj_matrix * gradient);
+        // d(det(M))/dM = cofactor_matrix(M)
+        __detail::backward(expr, context, __detail::cofactor_matrix(expr_val) * gradient);
     }
 };
 
-// ============================================================================
-// Vector/Matrix Variable Support
-// ============================================================================
-
-// Create vector variable
-template<typename T>
-Variable<T> variableVector(inout GradientContext<T> context, T value)
-{
-    Variable<T> var;
-    var.value = value;
-    var.id = context.allocateVariable();
-    return var;
-}
-
-// Create matrix variable
-template<typename T>
-Variable<T> variableMatrix(inout GradientContext<T> context, T value)
-{
-    Variable<T> var;
-    var.value = value;
-    var.id = context.allocateVariable();
-    return var;
-}
-
-// ============================================================================
-// Vector/Matrix Expression Creation Functions - Reduced Duplication
-// ============================================================================
-
-template<typename T, typename L, typename R>
-BackDotExpr<T, L, R> dotProduct(L left, R right)
-{
-    BackDotExpr<T, L, R> expr;
-    expr.left = left;
-    expr.right = right;
-    return expr;
-}
-
-template<typename T, typename L, typename R>
-BackCrossExpr<T, L, R> crossProduct(L left, R right)
-{
-    BackCrossExpr<T, L, R> expr;
-    expr.left = left;
-    expr.right = right;
-    return expr;
-}
+MAKE_BINARY_OP_BACK(BackDotExpr, dotProduct)
+MAKE_BINARY_OP_BACK(BackCrossExpr, crossProduct)
 
 // Macro for vector unary operations
 #define MAKE_VECTOR_UNARY_OP_BACK(ExprType, funcName) \
@@ -768,9 +774,9 @@ BackMatVecMulExpr<M, V, L, R> matVecMul(L left, R right)
 }
 
 template<typename M, typename E>
-BackDet2x2Expr<M, E> determinantExpr(E expr)
+BackDetExpr<M, E> determinantExpr(E expr)
 {
-    BackDet2x2Expr<M, E> result;
+    BackDetExpr<M, E> result;
     result.expr = expr;
     return result;
 }
@@ -848,7 +854,7 @@ V compute_gradients(inout GradientContext<V> context, BackMatVecMulExpr<M, V, L,
 }
 
 template<typename M, typename E>
-typename hlsl::matrix_traits<M>::element_type compute_gradients(inout GradientContext<M> context, BackDet2x2Expr<M, E> expr)
+typename hlsl::matrix_traits<M>::element_type compute_gradients(inout GradientContext<M> context, BackDetExpr<M, E> expr)
 {
     using ElementType = typename hlsl::matrix_traits<M>::element_type;
     context.zeroGradients();
