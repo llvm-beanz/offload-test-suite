@@ -45,6 +45,13 @@ storage for all intermediate variables.
 * [BackwardAD Test Pipeline](Backward.yaml) - Offload-test-suite YAML file to
   execute tests with test data.
 
+## Remaining Cleanup Work
+
+There's still a fair amount of cleanup work to do here. The API is a bit incongruent with HLSL's design conventions and doesn't stick to a clear API style (thanks Claude!). Also there's a fair bit of redundnacy and messy code throughout the implementations that should be cleaned up.
+
+That said, I think the implementation is in a state that can gather some early
+feedback.
+
 ## Limitations
 
 ### General Limitations
