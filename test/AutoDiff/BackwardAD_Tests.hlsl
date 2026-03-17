@@ -82,6 +82,24 @@ struct BackADTestInputs
     float det3x3_m20;
     float det3x3_m21;
     float det3x3_m22;
+
+    // 4x4 determinant test
+    float det4x4_m00;
+    float det4x4_m01;
+    float det4x4_m02;
+    float det4x4_m03;
+    float det4x4_m10;
+    float det4x4_m11;
+    float det4x4_m12;
+    float det4x4_m13;
+    float det4x4_m20;
+    float det4x4_m21;
+    float det4x4_m22;
+    float det4x4_m23;
+    float det4x4_m30;
+    float det4x4_m31;
+    float det4x4_m32;
+    float det4x4_m33;
 };
 
 // Input buffer to receive test parameters from CPU
@@ -514,6 +532,32 @@ BackADTestResult TestBackwardDet3x3(float m00, float m01, float m02,
     return result;
 }
 
+// Test 22: f(M) = det(M) for 4x4, df/dM[0][0] = cofactor(0,0)
+BackADTestResult TestBackwardDet4x4(float m00, float m01, float m02, float m03,
+                                     float m10, float m11, float m12, float m13,
+                                     float m20, float m21, float m22, float m23,
+                                     float m30, float m31, float m32, float m33)
+{
+    BackADTestResult result;
+    GradientContext<float4x4> context;
+    context.variable_count = 0;
+
+    float4x4 mat = float4x4(m00, m01, m02, m03,
+                             m10, m11, m12, m13,
+                             m20, m21, m22, m23,
+                             m30, m31, m32, m33);
+    Variable<float4x4> M = variable<float4x4>(context, mat);
+    VariableExpr<float4x4> M_expr;
+    M_expr.var = M;
+
+    AUTO_VAR(f, determinantExpr<float4x4>(M_expr));
+
+    result.value = compute_gradients(context, f);
+    float4x4 grad = M.gradient(context);
+    result.gradient = grad[0][0];
+    return result;
+}
+
 // ============================================================================
 // Compute Shader Entry Point
 // ============================================================================
@@ -527,7 +571,7 @@ void RunAllBackwardTests(uint3 DispatchThreadID : SV_DispatchThreadID)
     BackADTestInputs inputs = InputBuffer[threadIndex];
 
     // Collect all test results in local array
-    BackADTestResult results[22];
+    BackADTestResult results[23];
 
     // Test 0: Quadratic - f(x) = x^2
     results[0] = TestBackwardQuadratic(inputs.quadratic_x);
@@ -602,9 +646,15 @@ void RunAllBackwardTests(uint3 DispatchThreadID : SV_DispatchThreadID)
                                      inputs.det3x3_m10, inputs.det3x3_m11, inputs.det3x3_m12,
                                      inputs.det3x3_m20, inputs.det3x3_m21, inputs.det3x3_m22);
 
+    // Test 22: 4x4 Matrix Determinant
+    results[22] = TestBackwardDet4x4(inputs.det4x4_m00, inputs.det4x4_m01, inputs.det4x4_m02, inputs.det4x4_m03,
+                                     inputs.det4x4_m10, inputs.det4x4_m11, inputs.det4x4_m12, inputs.det4x4_m13,
+                                     inputs.det4x4_m20, inputs.det4x4_m21, inputs.det4x4_m22, inputs.det4x4_m23,
+                                     inputs.det4x4_m30, inputs.det4x4_m31, inputs.det4x4_m32, inputs.det4x4_m33);
+
     // Write all results to structured buffer at thread-specific indices
-    uint baseIndex = threadIndex * 22;
-    for (int i = 0; i < 22; i++)
+    uint baseIndex = threadIndex * 23;
+    for (int i = 0; i < 23; i++)
     {
         ResultBuffer[baseIndex + i] = results[i];
     }
