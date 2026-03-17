@@ -261,21 +261,21 @@ BackADTestResult TestBackwardComplexExpression(float input_x, float input_y)
 BackADTestResult TestBackwardVectorDot(float ux, float uy, float vx, float vy)
 {
     BackADTestResult result;
-    GradientContext<vector<float, 2> > context;
+    GradientContext<float2> context;
     context.variable_count = 0;
 
-    Variable<vector<float, 2> > u = variableVector<vector<float, 2> >(context, vector<float, 2>(ux, uy));
-    VariableExpr<vector<float, 2> > u_expr;
+    Variable<float2> u = variableVector<float2>(context, float2(ux, uy));
+    VariableExpr<float2> u_expr;
     u_expr.var = u;
 
-    VariableExpr<vector<float, 2> > v_expr;
-    v_expr.var.value = vector<float, 2>(vx, vy);
+    VariableExpr<float2> v_expr;
+    v_expr.var.value = float2(vx, vy);
     v_expr.var.id = -1;
 
     AUTO_VAR(f, dotProduct<float2>(u_expr, v_expr));
 
     result.value = compute_gradients(context, f);
-    vector<float, 2> grad = u.gradient(context);
+    float2 grad = u.gradient(context);
     result.gradient = grad.x;
     return result;
 }
@@ -284,17 +284,17 @@ BackADTestResult TestBackwardVectorDot(float ux, float uy, float vx, float vy)
 BackADTestResult TestBackwardVectorLength(float vx, float vy)
 {
     BackADTestResult result;
-    GradientContext<vector<float, 2> > context;
+    GradientContext<float2> context;
     context.variable_count = 0;
 
-    Variable<vector<float, 2> > v = variableVector<vector<float, 2> >(context, vector<float, 2>(vx, vy));
-    VariableExpr<vector<float, 2> > v_expr;
+    Variable<float2> v = variableVector<float2>(context, float2(vx, vy));
+    VariableExpr<float2> v_expr;
     v_expr.var = v;
 
-    AUTO_VAR(f, (lengthExpr<vector<float, 2> >(v_expr)));
+    AUTO_VAR(f, (lengthExpr<float2>(v_expr)));
 
     result.value = compute_gradients(context, f);
-    vector<float, 2> grad = v.gradient(context);
+    float2 grad = v.gradient(context);
     result.gradient = grad.x;
     return result;
 }
@@ -303,17 +303,17 @@ BackADTestResult TestBackwardVectorLength(float vx, float vy)
 BackADTestResult TestBackwardMatrixDeterminant(float a, float b, float c, float d)
 {
     BackADTestResult result;
-    GradientContext<matrix<float, 2, 2> > context;
+    GradientContext<float2x2 > context;
     context.variable_count = 0;
 
-    Variable<matrix<float, 2, 2> > M = variableMatrix<matrix<float, 2, 2> >(context, matrix<float, 2, 2>(a, b, c, d));
-    VariableExpr<matrix<float, 2, 2> > M_expr;
+    Variable<float2x2 > M = variableMatrix<float2x2 >(context, float2x2(a, b, c, d));
+    VariableExpr<float2x2 > M_expr;
     M_expr.var = M;
 
-    AUTO_VAR(f, determinantExpr<matrix<float, 2, 2> >(M_expr));
+    AUTO_VAR(f, determinantExpr<float2x2 >(M_expr));
 
     result.value = compute_gradients(context, f);
-    matrix<float, 2, 2> grad = M.gradient(context);
+    float2x2 grad = M.gradient(context);
     result.gradient = grad[0][0];
     return result;
 }
@@ -391,18 +391,18 @@ BackADTestResult TestBackwardSqrt(float input_x)
 BackADTestResult TestBackwardNormalize(float vx, float vy)
 {
     BackADTestResult result;
-    GradientContext<vector<float, 2> > context;
+    GradientContext<float2> context;
     context.variable_count = 0;
 
-    Variable<vector<float, 2> > v = variableVector<vector<float, 2> >(context, vector<float, 2>(vx, vy));
-    VariableExpr<vector<float, 2> > v_expr;
+    Variable<float2> v = variableVector<float2>(context, float2(vx, vy));
+    VariableExpr<float2> v_expr;
     v_expr.var = v;
 
-    AUTO_VAR(f, (normalizeExpr<vector<float, 2> >(v_expr)));
+    AUTO_VAR(f, (normalizeExpr<float2>(v_expr)));
 
-    vector<float, 2> fval = compute_gradients(context, f);
+    float2 fval = compute_gradients(context, f);
     result.value = fval.x;
-    vector<float, 2> grad = v.gradient(context);
+    float2 grad = v.gradient(context);
     result.gradient = grad.x;
     return result;
 }
@@ -411,22 +411,22 @@ BackADTestResult TestBackwardNormalize(float vx, float vy)
 BackADTestResult TestBackwardCrossProduct(float ux, float uy, float uz, float vx, float vy, float vz)
 {
     BackADTestResult result;
-    GradientContext<vector<float, 3> > context;
+    GradientContext<float3 > context;
     context.variable_count = 0;
 
-    Variable<vector<float, 3> > u = variableVector<vector<float, 3> >(context, vector<float, 3>(ux, uy, uz));
-    VariableExpr<vector<float, 3> > u_expr;
+    Variable<float3 > u = variableVector<float3 >(context, float3(ux, uy, uz));
+    VariableExpr<float3 > u_expr;
     u_expr.var = u;
 
-    VariableExpr<vector<float, 3> > v_expr;
-    v_expr.var.value = vector<float, 3>(vx, vy, vz);
+    VariableExpr<float3 > v_expr;
+    v_expr.var.value = float3(vx, vy, vz);
     v_expr.var.id = -1;
 
-    AUTO_VAR(f, crossProduct<vector<float, 3> >(u_expr, v_expr));
+    AUTO_VAR(f, crossProduct<float3 >(u_expr, v_expr));
 
-    vector<float, 3> fval = compute_gradients(context, f);
+    float3 fval = compute_gradients(context, f);
     result.value = fval.x;
-    vector<float, 3> grad = u.gradient(context);
+    float3 grad = u.gradient(context);
     result.gradient = grad.x;
     return result;
 }
@@ -435,24 +435,24 @@ BackADTestResult TestBackwardCrossProduct(float ux, float uy, float uz, float vx
 BackADTestResult TestBackwardMatVecMul(float m00, float m01, float m10, float m11, float vx, float vy)
 {
     BackADTestResult result;
-    GradientContext<vector<float, 2> > context;
+    GradientContext<float2> context;
     context.variable_count = 0;
 
     // Matrix is constant, vector is the variable
-    Variable<vector<float, 2> > v = variableVector<vector<float, 2> >(context, vector<float, 2>(vx, vy));
-    VariableExpr<vector<float, 2> > v_expr;
+    Variable<float2> v = variableVector<float2>(context, float2(vx, vy));
+    VariableExpr<float2> v_expr;
     v_expr.var = v;
 
     // Constant matrix
-    VariableExpr<matrix<float, 2, 2> > M_expr;
-    M_expr.var.value = matrix<float, 2, 2>(m00, m01, m10, m11);
+    VariableExpr<float2x2 > M_expr;
+    M_expr.var.value = float2x2(m00, m01, m10, m11);
     M_expr.var.id = -1;
 
-    AUTO_VAR(f, (matVecMul<matrix<float, 2, 2>, vector<float, 2> >(M_expr, v_expr)));
+    AUTO_VAR(f, (matVecMul<float2x2, float2>(M_expr, v_expr)));
 
-    vector<float, 2> fval = compute_gradients(context, f);
+    float2 fval = compute_gradients(context, f);
     result.value = fval.x;
-    vector<float, 2> grad = v.gradient(context);
+    float2 grad = v.gradient(context);
     result.gradient = grad.x;
     return result;
 }
