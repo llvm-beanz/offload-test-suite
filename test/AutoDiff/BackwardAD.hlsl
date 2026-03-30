@@ -399,6 +399,89 @@ struct BackSqrtExpr
 };
 
 // ============================================================================
+// Log Base 2 Expression
+// ============================================================================
+
+template<typename T, typename E>
+struct BackLog2Expr
+{
+  using ValueType = T;
+    E expr;
+    T expr_val;
+
+    T forward()
+    {
+        expr_val = __detail::forward(expr);
+        return log2(expr_val);
+    }
+
+    void backward(inout GradientContext<T> context, T gradient)
+    {
+        // d(log2(x))/dx = 1 / (x * ln(2))
+        __detail::backward(expr, context, gradient / (expr_val * T(0.693147180559945)));
+    }
+};
+
+// ============================================================================
+// Max Expression
+// ============================================================================
+
+template<typename T, typename L, typename R>
+struct BackMaxExpr
+{
+  using ValueType = T;
+    L left;
+    R right;
+    T left_val;
+    T right_val;
+
+    T forward()
+    {
+        left_val = __detail::forward(left);
+        right_val = __detail::forward(right);
+        return max(left_val, right_val);
+    }
+
+    void backward(inout GradientContext<T> context, T gradient)
+    {
+        // Gradient flows to the operand that was selected by max.
+        // step(edge, x) returns 1 where x >= edge, works for scalars and vectors.
+        T mask = step(right_val, left_val);
+        __detail::backward(left, context, gradient * mask);
+        __detail::backward(right, context, gradient * (T(1) - mask));
+    }
+};
+
+// ============================================================================
+// Min Expression
+// ============================================================================
+
+template<typename T, typename L, typename R>
+struct BackMinExpr
+{
+  using ValueType = T;
+    L left;
+    R right;
+    T left_val;
+    T right_val;
+
+    T forward()
+    {
+        left_val = __detail::forward(left);
+        right_val = __detail::forward(right);
+        return min(left_val, right_val);
+    }
+
+    void backward(inout GradientContext<T> context, T gradient)
+    {
+        // Gradient flows to the operand that was selected by min.
+        T mask = step(left_val, right_val);
+        __detail::backward(left, context, gradient * mask);
+        __detail::backward(right, context, gradient * (T(1) - mask));
+    }
+};
+
+// ============================================================================
 // High-Level API Functions
 // ============================================================================
 
@@ -469,6 +552,10 @@ MAKE_UNARY_OP_BACK(BackCosExpr, cosExpr)
 MAKE_UNARY_OP_BACK(BackExpExpr, expExpr)
 MAKE_UNARY_OP_BACK(BackLogExpr, logExpr)
 MAKE_UNARY_OP_BACK(BackSqrtExpr, sqrtExpr)
+MAKE_UNARY_OP_BACK(BackLog2Expr, log2Expr)
+
+MAKE_BINARY_OP_BACK(BackMaxExpr, maxExpr)
+MAKE_BINARY_OP_BACK(BackMinExpr, minExpr)
 
 // ============================================================================
 // Computation Functions - Macro to Reduce Duplication
@@ -517,6 +604,28 @@ MAKE_COMPUTE_GRADIENTS_UNARY(BackCosExpr)
 MAKE_COMPUTE_GRADIENTS_UNARY(BackExpExpr)
 MAKE_COMPUTE_GRADIENTS_UNARY(BackLogExpr)
 MAKE_COMPUTE_GRADIENTS_UNARY(BackSqrtExpr)
+MAKE_COMPUTE_GRADIENTS_UNARY(BackLog2Expr)
+
+MAKE_COMPUTE_GRADIENTS_BINARY(BackMaxExpr)
+MAKE_COMPUTE_GRADIENTS_BINARY(BackMinExpr)
+
+// ============================================================================
+// Seeded Gradient Computation
+// ============================================================================
+// Like compute_gradients but accepts an arbitrary seed instead of T(1).
+// A single template covers all expression types since they all provide
+// ValueType, forward(), and backward().
+
+template<typename ExprT>
+typename hlsl::enable_if<!hlsl::is_algebraic<ExprT>::value, typename ExprT::ValueType>::type
+compute_gradients_seeded(inout GradientContext<typename ExprT::ValueType> context, ExprT expr, typename ExprT::ValueType seed)
+{
+    using T = typename ExprT::ValueType;
+    context.zeroGradients();
+    T result = expr.forward();
+    expr.backward(context, seed);
+    return result;
+}
 
 // ============================================================================
 // Vector and Matrix Support for Backward AD
