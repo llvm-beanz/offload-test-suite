@@ -1,0 +1,88 @@
+#--- source.hlsl
+// Test QuadReadLaneAt with a user-defined struct.
+// Each thread reads from its own quad lane (dynamic index) to validate
+// that struct member access works with QuadReadLaneAt.
+
+struct UserDefinedStruct {
+  int intData;
+  float floatData;
+};
+
+StructuredBuffer<UserDefinedStruct> InUDS : register(t0);
+RWStructuredBuffer<int> OutInt : register(u1);
+RWStructuredBuffer<float> OutFloat : register(u2);
+
+[numthreads(2,2,1)]
+void main(uint3 dtid : SV_DispatchThreadID) {
+  uint index = dtid.y * 2 + dtid.x;
+  OutInt[index] = QuadReadLaneAt(InUDS[index].intData, index);
+  OutFloat[index] = QuadReadLaneAt(InUDS[index].floatData, index);
+}
+
+//--- pipeline.yaml
+
+---
+Shaders:
+  - Stage: Compute
+    Entry: main
+    DispatchSize: [ 1, 1, 1 ]
+Buffers:
+  - Name: InUDS
+    Format: Hex32
+    Stride: 8
+    Data: [ 0x0, 0x0, 0x1, 0x3fa00000, 0x2, 0x40200000, 0x3, 0x40700000 ]
+  - Name: OutInt
+    Format: Int32
+    Stride: 4
+    FillSize: 16
+  - Name: OutFloat
+    Format: Float32
+    Stride: 4
+    FillSize: 16
+  - Name: ExpectedOutInt
+    Format: Int32
+    Stride: 4
+    Data: [ 0, 1, 2, 3 ]
+  - Name: ExpectedOutFloat
+    Format: Float32
+    Stride: 4
+    Data: [ 0.0, 1.25, 2.5, 3.75 ]
+Results:
+  - Result: TestInt
+    Rule: BufferExact
+    Actual: OutInt
+    Expected: ExpectedOutInt
+  - Result: TestFloat
+    Rule: BufferExact
+    Actual: OutFloat
+    Expected: ExpectedOutFloat
+DescriptorSets:
+  - Resources:
+    - Name: InUDS
+      Kind: StructuredBuffer
+      DirectXBinding:
+        Register: 0
+        Space: 0
+      VulkanBinding:
+        Binding: 0
+    - Name: OutInt
+      Kind: RWStructuredBuffer
+      DirectXBinding:
+        Register: 1
+        Space: 0
+      VulkanBinding:
+        Binding: 1
+    - Name: OutFloat
+      Kind: RWStructuredBuffer
+      DirectXBinding:
+        Register: 2
+        Space: 0
+      VulkanBinding:
+        Binding: 2
+
+...
+#--- end
+
+# RUN: split-file %s %t
+# RUN: %dxc_target -T cs_6_5 -Fo %t.o %t/source.hlsl
+# RUN: %offloader %t/pipeline.yaml %t.o

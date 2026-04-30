@@ -1,0 +1,61 @@
+#--- source.hlsl
+// Test QuadReadLaneAt with bool4: all threads read from quad lane 2.
+// Lane 2 (thread at dtid=(0,1,0)) holds bool4(false, false, false, true).
+
+StructuredBuffer<bool4> InBool : register(t0);
+RWStructuredBuffer<bool4> OutBool : register(u1);
+
+[numthreads(2,2,1)]
+void main(uint3 dtid : SV_DispatchThreadID) {
+  uint index = dtid.y * 2 + dtid.x;
+  OutBool[index] = QuadReadLaneAt(InBool[index], 2);
+}
+
+//--- pipeline.yaml
+
+---
+Shaders:
+  - Stage: Compute
+    Entry: main
+    DispatchSize: [ 1, 1, 1 ]
+Buffers:
+  - Name: InBool
+    Format: Bool
+    Stride: 16
+    Data: [ 1, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1 ]
+  - Name: OutBool
+    Format: Bool
+    Stride: 16
+    FillSize: 64
+  - Name: ExpectedOutBool
+    Format: Bool
+    Stride: 16
+    Data: [ 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1 ]
+Results:
+  - Result: TestBool
+    Rule: BufferExact
+    Actual: OutBool
+    Expected: ExpectedOutBool
+DescriptorSets:
+  - Resources:
+    - Name: InBool
+      Kind: StructuredBuffer
+      DirectXBinding:
+        Register: 0
+        Space: 0
+      VulkanBinding:
+        Binding: 0
+    - Name: OutBool
+      Kind: RWStructuredBuffer
+      DirectXBinding:
+        Register: 1
+        Space: 0
+      VulkanBinding:
+        Binding: 1
+
+...
+#--- end
+
+# RUN: split-file %s %t
+# RUN: %dxc_target -T cs_6_5 -Fo %t.o %t/source.hlsl
+# RUN: %offloader %t/pipeline.yaml %t.o
