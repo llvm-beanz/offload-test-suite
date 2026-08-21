@@ -148,6 +148,11 @@ endfunction()
 
 
 function(add_offloadtest_gpu_suite suite gpu_name)
+  # ICD: an optional Vulkan ICD manifest to point the loader at directly,
+  # instead of relying on whatever driver(s) are already registered on the
+  # machine (e.g. feme's build-tree `feme_vulkan` ICD).
+  cmake_parse_arguments(ARG "" "ICD" "" ${ARGN})
+
   if (suite MATCHES "^clang-")
     set(FORCE_CLANG True)
   else()
@@ -168,14 +173,22 @@ function(add_offloadtest_gpu_suite suite gpu_name)
   set(lit_args "${LLVM_LIT_ARGS}")
   separate_arguments(lit_args)
 
+  set(gpu_suite_env OFFLOADTEST_GPU_NAME=${gpu_name})
+  if (ARG_ICD)
+    list(APPEND gpu_suite_env VK_DRIVER_FILES=${ARG_ICD} VK_ICD_FILENAMES=${ARG_ICD})
+  endif()
+
   add_custom_target(check-hlsl-${suite}
-    COMMAND ${CMAKE_COMMAND} -E env OFFLOADTEST_GPU_NAME=${gpu_name}
+    COMMAND ${CMAKE_COMMAND} -E env ${gpu_suite_env}
             ${Python3_EXECUTABLE} ${lit_base_dir}/${lit_file_name}
             ${lit_args} ${CMAKE_CURRENT_BINARY_DIR}/${suite}
     COMMENT "Running the HLSL regression tests for ${suite} (device: ${gpu_name})"
     USES_TERMINAL
     )
   add_dependencies(check-hlsl-${suite} ${OFFLOADTEST_DEPS})
+  if (ARG_ICD)
+    add_dependencies(check-hlsl-${suite} feme_vulkan)
+  endif()
   set_target_properties(check-hlsl-${suite} PROPERTIES FOLDER "HLSL tests")
 endfunction()
 
@@ -235,6 +248,20 @@ if (SUPPORTS_SPIRV AND OFFLOADTEST_ENABLE_VULKAN AND WIN32)
 
   if (OFFLOADTEST_TEST_CLANG)
     add_offloadtest_gpu_suite(clang-vk-lavapipe llvmpipe)
+  endif()
+
+  set(TEST_vk False)
+endif()
+
+# feme's build-tree software Vulkan ICD: point the loader straight at its
+# generated manifest rather than depending on a system-installed driver, so
+# this suite works the same way on every host platform.
+if (SUPPORTS_SPIRV AND OFFLOADTEST_ENABLE_VULKAN AND OFFLOADTEST_ENABLE_FEME_VULKAN)
+  set(TEST_vk True)
+  add_offloadtest_gpu_suite(feme-vk FeMe ICD ${FEME_VULKAN_ICD_MANIFEST})
+
+  if (OFFLOADTEST_TEST_CLANG)
+    add_offloadtest_gpu_suite(clang-feme-vk FeMe ICD ${FEME_VULKAN_ICD_MANIFEST})
   endif()
 
   set(TEST_vk False)
