@@ -124,6 +124,15 @@ if (Vulkan_INCLUDE_DIRS AND NOT OFFLOADTEST_WARP_ONLY)
   set(OFFLOADTEST_ENABLE_VULKAN On)
 endif ()
 
+# feme (https://github.com/llvm/llvm-project/tree/main/feme) optionally
+# builds an in-process software Vulkan ICD (the `feme_vulkan` target) when
+# it is configured alongside this project in the same LLVM build. When
+# present, offer suites that exercise it directly instead of relying on a
+# system-installed driver.
+if (TARGET feme_vulkan)
+  set(OFFLOADTEST_ENABLE_FEME_VULKAN On)
+endif ()
+
 find_package(D3D12)
 message(STATUS "D3D12 Include Dirs: ${D3D12_INCLUDE_DIRS}")
 if (D3D12_INCLUDE_DIRS)
