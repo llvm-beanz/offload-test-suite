@@ -1,0 +1,87 @@
+#--- source.hlsl
+Buffer<uint> In : register(t0);
+RWBuffer<uint> Out : register(u1);
+
+uint checkMask(uint id, uint expected) {
+  return WaveActiveBitOr(1u << id) == expected;
+}
+
+[numthreads(4, 1, 1)]
+void main(uint3 tid : SV_GroupThreadID) {
+  uint id = tid.x;
+  uint passed = 0;
+  [loop]
+  for (uint i = 0; i < 2; ++i) {
+    uint shift = 6 * i;
+    // Continue paths rejoin on the next iteration; thread 2 breaks out of
+    // the loop on iteration 0 and must not participate on iteration 1.
+    passed |= checkMask(id, i == 0 ? 0xf : 0xb) << shift;
+    switch (In[id]) {
+    case 0:
+      passed |= checkMask(id, 0x1) << (shift + 1);
+      if (i == 0)
+        continue;
+    case 1:
+      passed |= checkMask(id, i == 0 ? 0x2 : 0x3) << (shift + 2);
+      if (id == 1 && i == 1)
+        break;
+    case 2:
+      passed |= checkMask(id, i == 0 ? 0x6 : 0x1) << (shift + 3);
+      break;
+    default:
+      passed |= checkMask(id, 0x8) << (shift + 4);
+      continue;
+    }
+    // Switch breaks rejoin here, but switch continues target the outer loop.
+    passed |= checkMask(id, i == 0 ? 0x6 : 0x3) << (shift + 5);
+    if (id == 2)
+      break;
+  }
+  passed |= checkMask(id, 0xf) << 12;
+  Out[id] = passed;
+}
+
+//--- pipeline.yaml
+---
+Shaders:
+  - Stage: Compute
+    Entry: main
+Buffers:
+  - Name: In
+    Format: UInt32
+    Data: [ 0, 1, 2, 3 ]
+  - Name: Out
+    Format: UInt32
+    Data: [ 0, 0, 0, 0 ]
+  - Name: Expected
+    Format: UInt32
+    Data: [ 7107, 6509, 4137, 5201 ]
+Results:
+  - Result: EnclosingLoop
+    Rule: BufferExact
+    Actual: Out
+    Expected: Expected
+DescriptorSets:
+  - Resources:
+    - Name: In
+      Kind: Buffer
+      DirectXBinding:
+        Register: 0
+        Space: 0
+      VulkanBinding:
+        Binding: 0
+    - Name: Out
+      Kind: RWBuffer
+      DirectXBinding:
+        Register: 1
+        Space: 0
+      VulkanBinding:
+        Binding: 1
+...
+#--- end
+
+# RUN: split-file %s %t
+# RUN: %dxc_target -T cs_6_0 -Od -Fo %t.od.o %t/source.hlsl
+# RUN: %offloader %t/pipeline.yaml %t.od.o
+# RUN: %dxc_target -T cs_6_0 -O3 -Fo %t.o %t/source.hlsl
+# RUN: %offloader %t/pipeline.yaml %t.o

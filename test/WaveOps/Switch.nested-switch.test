@@ -1,0 +1,94 @@
+#--- source.hlsl
+Buffer<uint> In : register(t0);
+RWBuffer<uint> Out : register(u1);
+
+uint checkMask(uint id, uint expected) {
+  return WaveActiveBitOr(1u << id) == expected;
+}
+
+[numthreads(4, 1, 1)]
+void main(uint3 tid : SV_GroupThreadID) {
+  uint id = tid.x;
+  // Round 0 gives the inner default a direct entrant; round 1 exercises
+  // the outer default without increasing the number of threads.
+  for (uint round = 0; round < 2; ++round) {
+    uint passed = 0;
+    switch (In[4 * round + id]) {
+    case 0:
+      passed |= checkMask(id, round == 0 ? 0x7 : 0x5);
+      switch (id) {
+      case 0:
+        passed |= checkMask(id, 0x1) << 1;
+      case 1:
+        passed |= checkMask(id, round == 0 ? 0x3 : 0x1) << 2;
+        if (id == 0)
+          break;
+      default:
+        passed |= checkMask(id, round == 0 ? 0x6 : 0x4) << 3;
+        break;
+      }
+      // Inner breaks must not exit the outer switch or skip its fallthrough.
+      passed |= checkMask(id, round == 0 ? 0x7 : 0x5) << 4;
+    case 1:
+      passed |= checkMask(id, round == 0 ? 0xf : 0x7) << 5;
+      switch (id & 1) {
+      case 0:
+        passed |= checkMask(id, 0x5) << 6;
+      case 1:
+        passed |= checkMask(id, round == 0 ? 0xf : 0x7) << 7;
+        break;
+      }
+      break;
+    default:
+      passed |= checkMask(id, 0x8) << 8;
+      break;
+    }
+    passed |= checkMask(id, 0xf) << 9;
+    Out[4 * round + id] = passed;
+  }
+}
+
+//--- pipeline.yaml
+---
+Shaders:
+  - Stage: Compute
+    Entry: main
+Buffers:
+  - Name: In
+    Format: UInt32
+    Data: [ 0, 0, 0, 1, 0, 1, 0, 2 ]
+  - Name: Out
+    Format: UInt32
+    Data: [ 0, 0, 0, 0, 0, 0, 0, 0 ]
+  - Name: Expected
+    Format: UInt32
+    Data: [ 759, 701, 761, 672, 759, 672, 761, 768 ]
+Results:
+  - Result: NestedSwitch
+    Rule: BufferExact
+    Actual: Out
+    Expected: Expected
+DescriptorSets:
+  - Resources:
+    - Name: In
+      Kind: Buffer
+      DirectXBinding:
+        Register: 0
+        Space: 0
+      VulkanBinding:
+        Binding: 0
+    - Name: Out
+      Kind: RWBuffer
+      DirectXBinding:
+        Register: 1
+        Space: 0
+      VulkanBinding:
+        Binding: 1
+...
+#--- end
+
+# RUN: split-file %s %t
+# RUN: %dxc_target -T cs_6_0 -Od -Fo %t.od.o %t/source.hlsl
+# RUN: %offloader %t/pipeline.yaml %t.od.o
+# RUN: %dxc_target -T cs_6_0 -O3 -Fo %t.o %t/source.hlsl
+# RUN: %offloader %t/pipeline.yaml %t.o

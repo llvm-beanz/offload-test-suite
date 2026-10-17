@@ -1,0 +1,92 @@
+#--- source.hlsl
+Buffer<uint> In : register(t0);
+RWBuffer<uint> Out : register(u1);
+
+// Four threads fit in the smallest wave. Thread-ID bits identify participants
+// independently of their lane assignment.
+uint checkMask(uint id, uint expected) {
+  return WaveActiveBitOr(1u << id) == expected;
+}
+
+[numthreads(4, 1, 1)]
+void main(uint3 tid : SV_GroupThreadID) {
+  uint id = tid.x;
+  // Two uniform rounds cover all selectors without splitting a group into waves.
+  for (uint round = 0; round < 2; ++round) {
+    uint passed = 0;
+    switch (In[4 * round + id]) {
+    case 2:
+      passed |= checkMask(id, 0x5);
+      break;
+    case 0:
+      passed |= checkMask(id, 0x2);
+      break;
+    case 1:
+      passed |= checkMask(id, 0xc);
+      break;
+    case 3:
+    default:
+      // Explicit and unmatched selectors share the same label in round 1.
+      passed |= checkMask(id, round == 0 ? 0x8 : 0x3);
+      break;
+    }
+    passed |= checkMask(id, 0xf) << 1;
+
+    // Unmatched threads must rejoin the threads that break out of the switch.
+    switch (In[4 * round + id]) {
+    case 2:
+      passed |= checkMask(id, 0x5) << 2;
+      break;
+    case 0:
+      passed |= checkMask(id, 0x2) << 2;
+      break;
+    }
+    passed |= checkMask(id, 0xf) << 3;
+    Out[4 * round + id] = passed;
+  }
+}
+
+//--- pipeline.yaml
+---
+Shaders:
+  - Stage: Compute
+    Entry: main
+Buffers:
+  - Name: In
+    Format: UInt32
+    Data: [ 2, 0, 2, 9, 3, 9, 1, 1 ]
+  - Name: Out
+    Format: UInt32
+    Data: [ 0, 0, 0, 0, 0, 0, 0, 0 ]
+  - Name: Expected
+    Format: UInt32
+    Data: [ 15, 15, 15, 11, 11, 11, 11, 11 ]
+Results:
+  - Result: CaseEntry
+    Rule: BufferExact
+    Actual: Out
+    Expected: Expected
+DescriptorSets:
+  - Resources:
+    - Name: In
+      Kind: Buffer
+      DirectXBinding:
+        Register: 0
+        Space: 0
+      VulkanBinding:
+        Binding: 0
+    - Name: Out
+      Kind: RWBuffer
+      DirectXBinding:
+        Register: 1
+        Space: 0
+      VulkanBinding:
+        Binding: 1
+...
+#--- end
+
+# RUN: split-file %s %t
+# RUN: %dxc_target -T cs_6_0 -Od -Fo %t.od.o %t/source.hlsl
+# RUN: %offloader %t/pipeline.yaml %t.od.o
+# RUN: %dxc_target -T cs_6_0 -O3 -Fo %t.o %t/source.hlsl
+# RUN: %offloader %t/pipeline.yaml %t.o

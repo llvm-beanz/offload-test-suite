@@ -1,0 +1,80 @@
+#--- source.hlsl
+Buffer<uint> In : register(t0);
+RWBuffer<uint> Out : register(u1);
+
+uint checkMask(uint id, uint expected) {
+  return WaveActiveBitOr(1u << id) == expected;
+}
+
+[numthreads(4, 1, 1)]
+void main(uint3 tid : SV_GroupThreadID) {
+  uint id = tid.x;
+  uint passed = 0;
+  switch (In[id]) {
+  case 0:
+    passed |= checkMask(id, 0x7);
+    [loop]
+    for (uint i = 0; i < 3; ++i) {
+      // Threads 0, 1 and 2 leave on different iterations. Neither this break
+      // nor the continue below may exit the enclosing switch.
+      if (i == id)
+        break;
+      passed |= checkMask(id, i == 0 ? 0x6 : 0x4) << (1 + i);
+      if (id == 1)
+        continue;
+      passed |= checkMask(id, 0x4) << (3 + i);
+    }
+    passed |= checkMask(id, 0x7) << 5;
+  case 1:
+    // All loop exits must merge before falling through to the direct entrants.
+    passed |= checkMask(id, 0xf) << 6;
+    break;
+  }
+  passed |= checkMask(id, 0xf) << 7;
+  Out[id] = passed;
+}
+
+//--- pipeline.yaml
+---
+Shaders:
+  - Stage: Compute
+    Entry: main
+Buffers:
+  - Name: In
+    Format: UInt32
+    Data: [ 0, 0, 0, 1 ]
+  - Name: Out
+    Format: UInt32
+    Data: [ 0, 0, 0, 0 ]
+  - Name: Expected
+    Format: UInt32
+    Data: [ 225, 227, 255, 192 ]
+Results:
+  - Result: NestedLoop
+    Rule: BufferExact
+    Actual: Out
+    Expected: Expected
+DescriptorSets:
+  - Resources:
+    - Name: In
+      Kind: Buffer
+      DirectXBinding:
+        Register: 0
+        Space: 0
+      VulkanBinding:
+        Binding: 0
+    - Name: Out
+      Kind: RWBuffer
+      DirectXBinding:
+        Register: 1
+        Space: 0
+      VulkanBinding:
+        Binding: 1
+...
+#--- end
+
+# RUN: split-file %s %t
+# RUN: %dxc_target -T cs_6_0 -Od -Fo %t.od.o %t/source.hlsl
+# RUN: %offloader %t/pipeline.yaml %t.od.o
+# RUN: %dxc_target -T cs_6_0 -O3 -Fo %t.o %t/source.hlsl
+# RUN: %offloader %t/pipeline.yaml %t.o

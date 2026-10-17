@@ -1,0 +1,73 @@
+#--- source.hlsl
+Buffer<uint> In : register(t0);
+RWBuffer<uint> Out : register(u1);
+
+uint checkMask(uint id, uint expected) {
+  return WaveActiveBitOr(1u << id) == expected;
+}
+
+[numthreads(4, 1, 1)]
+void main(uint3 tid : SV_GroupThreadID) {
+  uint id = tid.x;
+  uint passed = 0;
+  // Each label must merge its direct entrants with all fallthrough threads.
+  // A default in the middle must obey the same rule as an ordinary case.
+  switch (In[id]) {
+  case 0:
+    passed |= checkMask(id, 0x1);
+  case 1:
+    passed |= checkMask(id, 0x3) << 1;
+  default:
+    passed |= checkMask(id, 0xb) << 2;
+  case 2:
+    passed |= checkMask(id, 0xf) << 3;
+    break;
+  }
+  passed |= checkMask(id, 0xf) << 4;
+  Out[id] = passed;
+}
+
+//--- pipeline.yaml
+---
+Shaders:
+  - Stage: Compute
+    Entry: main
+Buffers:
+  - Name: In
+    Format: UInt32
+    Data: [ 0, 1, 2, 9 ]
+  - Name: Out
+    Format: UInt32
+    Data: [ 0, 0, 0, 0 ]
+  - Name: Expected
+    Format: UInt32
+    Data: [ 31, 30, 24, 28 ]
+Results:
+  - Result: Fallthrough
+    Rule: BufferExact
+    Actual: Out
+    Expected: Expected
+DescriptorSets:
+  - Resources:
+    - Name: In
+      Kind: Buffer
+      DirectXBinding:
+        Register: 0
+        Space: 0
+      VulkanBinding:
+        Binding: 0
+    - Name: Out
+      Kind: RWBuffer
+      DirectXBinding:
+        Register: 1
+        Space: 0
+      VulkanBinding:
+        Binding: 1
+...
+#--- end
+
+# RUN: split-file %s %t
+# RUN: %dxc_target -T cs_6_0 -Od -Fo %t.od.o %t/source.hlsl
+# RUN: %offloader %t/pipeline.yaml %t.od.o
+# RUN: %dxc_target -T cs_6_0 -O3 -Fo %t.o %t/source.hlsl
+# RUN: %offloader %t/pipeline.yaml %t.o
